@@ -155,23 +155,36 @@ const shouldCutMeal = (
   const returnMinutes = timeToMinutes(returnTime);
   const mealMinutes = timeToMinutes(mealTime);
 
-  // Logic cơ bản: đi trước hoặc đúng giờ ăn và về sau hoặc đúng giờ ăn
-  let result = departureMinutes <= mealMinutes && returnMinutes >= mealMinutes;
+  // Logic đơn giản: Cắt cơm khi đi học ảnh hưởng đến giờ ăn
 
-  // Logic đặc biệt cho bữa trưa (11:00)
-  if (mealTime === "11:00" && startTime && endTime) {
+  // Trường hợp 1: Đi học qua giờ ăn (đi trước và về sau giờ ăn)
+  // Ví dụ: đi 10:30, về 12:00, giờ ăn 11:00 -> cắt cơm trưa
+  const coversMealTime =
+    departureMinutes <= mealMinutes && returnMinutes >= mealMinutes;
+
+  // Trường hợp 2: Đang học đúng vào giờ ăn
+  let studyingDuringMeal = false;
+  if (startTime && endTime) {
     const startMinutes = timeToMinutes(startTime);
     const endMinutes = timeToMinutes(endTime);
-    const lunchMinutes = timeToMinutes("11:00");
-
-    // Nếu đang học đúng vào giờ trưa thì cũng cắt
-    const isStudyingDuringLunch =
-      startMinutes <= lunchMinutes && endMinutes >= lunchMinutes;
-    result = result || isStudyingDuringLunch;
-
+    studyingDuringMeal =
+      startMinutes <= mealMinutes && endMinutes >= mealMinutes;
   }
 
-  return result;
+  // Trường hợp 3: Đi sớm hơn giờ ăn (chỉ khi về sau giờ ăn)
+  // Ví dụ: đi 5:30, về 7:00, giờ ăn 6:00 -> cắt cơm sáng
+  const leaveBeforeMeal =
+    departureMinutes < mealMinutes && returnMinutes > mealMinutes;
+
+  // Trường hợp 4: Về muộn hơn giờ ăn (chỉ khi đi trước giờ ăn)
+  // Ví dụ: đi 10:00, về 12:00, giờ ăn 11:00 -> cắt cơm trưa
+  const returnAfterMeal =
+    departureMinutes < mealMinutes && returnMinutes > mealMinutes;
+
+  // Kết hợp các trường hợp
+  return (
+    coversMealTime || studyingDuringMeal || leaveBeforeMeal || returnAfterMeal
+  );
 };
 
 // Lấy thông tin thời gian chi tiết

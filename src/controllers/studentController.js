@@ -140,7 +140,7 @@ const getStudent = async (req, res) => {
     const studentData = {
       ...student.toJSON(),
       familyMembers: student.familyMembers || [],
-      foreignRelations: student.foreignRelations || []
+      foreignRelations: student.foreignRelations || [],
     };
 
     res.status(200).json(studentData);
@@ -273,7 +273,6 @@ const updateStudent = async (req, res) => {
 
     return res.status(200).json(updatedStudent);
   } catch (error) {
-    console.log("Cập nhật thất bại: ", error);
     return res.status(500).json("Lỗi server");
   }
 };
@@ -318,7 +317,9 @@ const addTuitionFee = async (req, res) => {
 
 const getAchievement = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate("student");
+    const user = await User.findByPk(req.params.userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -340,7 +341,9 @@ const getCutRice = async (req, res) => {
 
     const record = await CutRice.findOne({
       where: { studentId: user.studentId },
+      order: [["createdAt", "DESC"]], // Lấy record mới nhất
     });
+
     const emptyWeekly = {
       monday: { breakfast: false, lunch: false, dinner: false },
       tuesday: { breakfast: false, lunch: false, dinner: false },
@@ -350,7 +353,51 @@ const getCutRice = async (req, res) => {
       saturday: { breakfast: false, lunch: false, dinner: false },
       sunday: { breakfast: false, lunch: false, dinner: false },
     };
-    return res.status(200).json(record ? record.weekly : emptyWeekly);
+
+    if (record) {
+      // Trả về dữ liệu từ database (sử dụng field weekly)
+      const cutRiceData = {
+        monday: record.weekly?.monday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        tuesday: record.weekly?.tuesday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        wednesday: record.weekly?.wednesday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        thursday: record.weekly?.thursday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        friday: record.weekly?.friday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        saturday: record.weekly?.saturday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+        sunday: record.weekly?.sunday || {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+        },
+      };
+      return res.status(200).json(cutRiceData);
+    } else {
+      // Nếu không có record, trả về lịch trống
+      return res.status(200).json(emptyWeekly);
+    }
   } catch (error) {
     return res.status(500).json({ message: "Lỗi server" });
   }
@@ -381,14 +428,16 @@ const createAutoCutRice = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).populate("student");
+    const user = await User.findByPk(userId, {
+      include: [{ model: Student }],
+    });
     if (!user || !user.student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
 
     const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.updateAutoCutRice(
-      user.student._id
+      user.student.id
     );
 
     return res.status(201).json({
@@ -406,14 +455,16 @@ const updateAutoCutRice = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).populate("student");
+    const user = await User.findByPk(userId, {
+      include: [{ model: Student }],
+    });
     if (!user || !user.student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
 
     const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.updateAutoCutRice(
-      user.student._id
+      user.student.id
     );
 
     return res.status(200).json({
@@ -431,14 +482,16 @@ const resetAutoCutRice = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).populate("student");
+    const user = await User.findByPk(userId, {
+      include: [{ model: Student }],
+    });
     if (!user || !user.student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
 
     const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.resetToAutoCutRice(
-      user.student._id
+      user.student.id
     );
 
     return res.status(200).json({
@@ -530,7 +583,9 @@ const deleteCutRice = async (req, res) => {
 
 const getLearningInformation = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate("student");
+    const user = await User.findByPk(req.params.userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -546,7 +601,9 @@ const getLearningInformation = async (req, res) => {
 
 const addLearningInformation = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate("student");
+    const user = await User.findByPk(req.params.userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -555,7 +612,7 @@ const addLearningInformation = async (req, res) => {
     const student = user.student;
 
     student.learningInformation.push(req.body);
-    await student.save();
+    await student.update(student.toJSON());
 
     return res.status(201).json(student.learningInformation);
   } catch (error) {
@@ -587,7 +644,9 @@ const deleteLearningInformation = async (req, res) => {
   try {
     const { userId, learnId } = req.params;
 
-    const user = await User.findById(userId).populate("student");
+    const user = await User.findByPk(userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -601,7 +660,7 @@ const deleteLearningInformation = async (req, res) => {
 
     // Tìm và xóa trong semesterResults thay vì learningInformation
     const semesterIndex = student.semesterResults.findIndex(
-      (result) => result._id.toString() === learnId
+      (result) => result.id === learnId
     );
 
     if (semesterIndex === -1) {
@@ -618,7 +677,7 @@ const deleteLearningInformation = async (req, res) => {
       gradeHelper.updateCumulativeGrades(student.semesterResults);
     }
 
-    await student.save();
+    await student.update(student.toJSON());
 
     return res
       .status(200)
@@ -647,7 +706,9 @@ const updateTuitionFee = async (req, res) => {
 
 const updateLearningResult = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate("student");
+    const user = await User.findByPk(req.params.userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -661,7 +722,7 @@ const updateLearningResult = async (req, res) => {
     }
 
     learningResult.set(req.body);
-    await student.save();
+    await student.update(student.toJSON());
 
     return res.status(200).json(student.learningInformation);
   } catch (error) {
@@ -672,7 +733,9 @@ const updateLearningResult = async (req, res) => {
 // Debug function để kiểm tra lịch cắt cơm
 const debugCutRice = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate("student");
+    const user = await User.findByPk(req.params.userId, {
+      include: [{ model: Student }],
+    });
 
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
@@ -719,8 +782,8 @@ const addFamilyMember = async (req, res) => {
 
     // Thêm ID cho family member
     const newFamilyMember = {
-      id: require('crypto').randomUUID(),
-      ...familyMemberData
+      id: require("crypto").randomUUID(),
+      ...familyMemberData,
     };
 
     // Lấy danh sách family members hiện tại
@@ -844,8 +907,8 @@ const addForeignRelation = async (req, res) => {
 
     // Thêm ID cho foreign relation
     const newForeignRelation = {
-      id: require('crypto').randomUUID(),
-      ...foreignRelationData
+      id: require("crypto").randomUUID(),
+      ...foreignRelationData,
     };
 
     // Lấy danh sách foreign relations hiện tại
@@ -962,13 +1025,13 @@ const addPartyRating = async (req, res) => {
     const { studentId } = req.params;
     const partyRatingData = req.body;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
 
     student.partyRatings.push(partyRatingData);
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(201).json({
       message: "Thêm xếp loại Đảng viên thành công",
@@ -984,7 +1047,7 @@ const getPartyRatings = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1003,7 +1066,7 @@ const updatePartyRating = async (req, res) => {
     const { studentId, partyRatingId } = req.params;
     const updateData = req.body;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1016,7 +1079,7 @@ const updatePartyRating = async (req, res) => {
     }
 
     Object.assign(partyRating, updateData);
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(200).json({
       message: "Cập nhật xếp loại Đảng viên thành công",
@@ -1032,7 +1095,7 @@ const deletePartyRating = async (req, res) => {
   try {
     const { studentId, partyRatingId } = req.params;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1045,7 +1108,7 @@ const deletePartyRating = async (req, res) => {
     }
 
     partyRating.remove();
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(200).json({
       message: "Xóa xếp loại Đảng viên thành công",
@@ -1063,13 +1126,13 @@ const addTrainingRating = async (req, res) => {
     const { studentId } = req.params;
     const trainingRatingData = req.body;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
 
     student.trainingRatings.push(trainingRatingData);
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(201).json({
       message: "Thêm xếp loại rèn luyện thành công",
@@ -1085,7 +1148,7 @@ const getTrainingRatings = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1104,7 +1167,7 @@ const updateTrainingRating = async (req, res) => {
     const { studentId, trainingRatingId } = req.params;
     const updateData = req.body;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1117,7 +1180,7 @@ const updateTrainingRating = async (req, res) => {
     }
 
     Object.assign(trainingRating, updateData);
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(200).json({
       message: "Cập nhật xếp loại rèn luyện thành công",
@@ -1133,7 +1196,7 @@ const deleteTrainingRating = async (req, res) => {
   try {
     const { studentId, trainingRatingId } = req.params;
 
-    const student = await Student.findById(studentId);
+    const student = await Student.findByPk(studentId);
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
@@ -1146,7 +1209,7 @@ const deleteTrainingRating = async (req, res) => {
     }
 
     trainingRating.remove();
-    await student.save();
+    await student.update(student.toJSON());
 
     res.status(200).json({
       message: "Xóa xếp loại rèn luyện thành công",

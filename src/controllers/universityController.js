@@ -125,7 +125,7 @@ const getOrganizationById = async (req, res) => {
 const getEducationLevelById = async (req, res) => {
   try {
     const { educationLevelId } = req.params;
-    const educationLevel = await EducationLevel.findById(educationLevelId);
+    const educationLevel = await EducationLevel.findByPk(educationLevelId);
     if (!educationLevel) {
       return res
         .status(404)

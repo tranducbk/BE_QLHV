@@ -841,7 +841,7 @@ const updateYearlyResults = async (student, schoolYear) => {
     let totalGradePoints10 = 0;
 
     // Thu thập ID của các học kỳ thuộc năm học này
-    const semesterIds = yearResults.map((result) => result._id);
+    const semesterIds = yearResults.map((result) => result.id);
 
     yearResults.forEach((result, index) => {
       if (result.subjects && result.subjects.length > 0) {
@@ -931,7 +931,7 @@ const updateYearlyResults = async (student, schoolYear) => {
     }
 
     // Lưu vào database trước để có _id
-    await student.save();
+    await student.update(student.toJSON());
 
     // Sau khi lưu, cập nhật thông tin năm học cho tất cả học kỳ thuộc năm này
     const savedYearlyResult = student.yearlyResults.find(
@@ -940,11 +940,11 @@ const updateYearlyResults = async (student, schoolYear) => {
 
     if (savedYearlyResult) {
       yearResults.forEach((semester) => {
-        semester.yearlyResultId = savedYearlyResult._id;
+        semester.yearlyResultId = savedYearlyResult.id;
       });
 
       // Lưu lại để cập nhật yearlyResultId
-      await student.save();
+      await student.update(student.toJSON());
     }
   } catch (error) {
     console.error("Error updating yearly results:", error);
@@ -984,7 +984,9 @@ const deleteYearlyResult = async (req, res) => {
   try {
     const { userId, schoolYear } = req.params;
 
-    const user = await User.findById(userId).populate("student");
+    const user = await User.findByPk(userId, {
+      include: [{ model: Student }],
+    });
     if (!user || !user.student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
@@ -1013,7 +1015,7 @@ const deleteYearlyResult = async (req, res) => {
 
       // Tìm thông tin học kỳ để gọi API xóa
       const semestersToDelete = user.student.semesterResults.filter(
-        (semester) => semesterIdsToDelete.includes(semester._id.toString())
+        (semester) => semesterIdsToDelete.includes(semester.id)
       );
 
       // Gọi API xóa từng học kỳ
@@ -1021,7 +1023,7 @@ const deleteYearlyResult = async (req, res) => {
         try {
           // Tìm index của học kỳ trong semesterResults
           const semesterIndex = user.student.semesterResults.findIndex(
-            (result) => result._id.toString() === semester._id.toString()
+            (result) => result.id === semester.id
           );
 
           if (semesterIndex !== -1) {
@@ -1046,7 +1048,7 @@ const deleteYearlyResult = async (req, res) => {
     }
 
     // Lưu vào database
-    await user.student.save();
+    await user.student.update(user.student.toJSON());
 
     return res.status(200).json({
       message: `Đã xóa thành công năm học ${schoolYear} và tất cả học kỳ thuộc năm đó`,
@@ -1130,7 +1132,7 @@ const recalculateAllYearlyResults = async (student) => {
       yearlyTotalCredits += credits;
       yearlyTotalGradePoints4 += grade4 * credits;
       yearlyTotalGradePoints10 += grade10 * credits;
-      semesterIds.push(semester._id);
+      semesterIds.push(semester.id);
 
       // Cập nhật nợ cho từng học kỳ trong quá trình duyệt
       const subjects = semester.subjects || [];
@@ -1244,7 +1246,7 @@ const recalculateAllYearlyResults = async (student) => {
 
     if (savedYearlyResult) {
       yearSemesters.forEach((semester) => {
-        semester.yearlyResultId = savedYearlyResult._id;
+        semester.yearlyResultId = savedYearlyResult.id;
       });
     }
   }
