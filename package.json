@@ -34,7 +34,8 @@
     "prisma": "^6.17.1",
     "sequelize": "^6.37.7",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^11.12.0",

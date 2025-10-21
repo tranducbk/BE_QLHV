@@ -10,13 +10,17 @@ const verifyToken = (req, res, next) => {
     // ) {
     //   return res.status(403).json("Token không hợp lệ");
     // }
-    jwt.verify(accessToken, process.env.JWT_ACCESS_KEY, (err, user) => {
-      if (err) {
-        return res.status(403).json("Token không hợp lệ");
+    jwt.verify(
+      accessToken,
+      process.env.JWT_SECRET || "your-super-secret-jwt-key-here",
+      (err, user) => {
+        if (err) {
+          return res.status(403).json("Token không hợp lệ");
+        }
+        req.user = user;
+        next();
       }
-      req.user = user;
-      next();
-    });
+    );
   } else {
     return res.status(401).json("Bạn chưa đăng nhập");
   }
@@ -29,7 +33,7 @@ const isAdmin = (req, res, next) => {
 
   jwt.verify(
     authHeader.split(" ")[1],
-    process.env.JWT_ACCESS_KEY,
+    process.env.JWT_SECRET || "your-super-secret-jwt-key-here",
     (err, user) => {
       if (err) return res.status(401).json("Token không hợp lệ");
       if (user.admin === true) next();

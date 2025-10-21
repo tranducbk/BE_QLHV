@@ -107,8 +107,8 @@ const Register = async (req, res) => {
     if (req.body.isAdmin) {
       // Tạo Commander với thông tin cơ bản
       const newCommander = await Commander.create({
-        commanderId: req.body.commanderId || req.body.username, // Mã quân nhân
-        fullName: req.body.fullName || req.body.username,
+        commanderId: req.body.commanderId || "", // Mã quân nhân
+        fullName: req.body.fullName || "",
         phoneNumber: req.body.phoneNumber || "",
         email: req.body.email || "",
         unit: req.body.unit || "",
@@ -177,6 +177,7 @@ global.accessTokenList = [];
 const Login = async (req, res) => {
   try {
     const user = await User.findOne({ where: { username: req.body.username } });
+
     if (!user) {
       return res.status(404).json("Tên đăng nhập không đúng");
     }
@@ -185,13 +186,14 @@ const Login = async (req, res) => {
       req.body.password,
       user.password
     );
+
     if (!validPassword) {
       return res.status(404).json("Mật khẩu không đúng");
     }
 
     const accessToken = jwt.sign(
       { id: user.id, admin: user.isAdmin },
-      process.env.JWT_ACCESS_KEY,
+      process.env.JWT_SECRET || "your-super-secret-jwt-key-here",
       { expiresIn: "2h" }
     );
 
@@ -207,7 +209,9 @@ const Login = async (req, res) => {
     const { password, ...other } = user.toJSON();
     res.status(200).json({ other, accessToken });
   } catch (error) {
-    res.status(500).json(error);
+    res
+      .status(500)
+      .json({ message: "Đăng nhập thất bại", error: error.message });
   }
 };
 

@@ -1,6 +1,7 @@
 module.exports = {
   PORT: process.env.PORT || 8080,
   MONGODB_ATLAS_URL: process.env.MONGODB_ATLAS_URL,
+  DATABASE_URL: process.env.DATABASE_URL,
   PG_HOST: process.env.PG_HOST || "localhost",
   PG_PORT: parseInt(process.env.PG_PORT || "5432", 10),
   PG_DATABASE: process.env.PG_DATABASE || "QLHV",

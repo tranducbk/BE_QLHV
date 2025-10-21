@@ -1,17 +1,15 @@
 const { Sequelize } = require("sequelize");
-const {
-  PG_HOST,
-  PG_PORT,
-  PG_DATABASE,
-  PG_USER,
-  PG_PASSWORD,
-} = require("../configs");
+const { PG_HOST, DATABASE_URL } = require("../configs");
 
-const sequelize = new Sequelize(PG_DATABASE, PG_USER, PG_PASSWORD, {
-  host: PG_HOST,
-  port: PG_PORT,
+const sequelize = new Sequelize(DATABASE_URL, {
   dialect: "postgres",
   logging: false,
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false,
+    },
+  },
 });
 
 async function connectPostgreSQL() {

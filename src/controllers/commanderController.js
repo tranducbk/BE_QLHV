@@ -1385,12 +1385,18 @@ const getTimeTable = async (req, res) => {
 const getStudent = async (req, res) => {
   try {
     const student = await Student.findOne({
-      where: { studentId: req.params.studentId },
+      where: { id: req.params.studentId },
       include: [
-        { model: University, attributes: ["universityCode", "universityName"] },
-        { model: Organization, attributes: ["organizationName", "travelTime"] },
-        { model: EducationLevel, attributes: ["levelName"] },
-        { model: ClassModel, attributes: ["className"] },
+        {
+          model: University,
+          attributes: ["id", "universityCode", "universityName"],
+        },
+        {
+          model: Organization,
+          attributes: ["id", "organizationName", "travelTime"],
+        },
+        { model: EducationLevel, attributes: ["id", "levelName"] },
+        { model: ClassModel, attributes: ["id", "className"] },
       ],
     });
 
