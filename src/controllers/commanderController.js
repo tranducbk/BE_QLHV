@@ -341,15 +341,6 @@ const createCommander = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
 
-    const newCommander = await Commander.create({});
-
-    const newUser = await User.create({
-      username: req.body.username,
-      password: hashedPassword,
-      isAdmin: true,
-      commanderId: newCommander.id,
-    });
-
     const {
       commanderId,
       fullName,
@@ -376,40 +367,40 @@ const createCommander = async (req, res) => {
       avatar,
     } = req.body;
 
-    const updatedCommander = await Commander.update(
-      {
-        commanderId,
-        fullName,
-        gender,
-        birthday,
-        placeOfBirth,
-        hometown,
-        ethnicity,
-        religion,
-        currentAddress,
-        email,
-        phoneNumber,
-        cccd,
-        partyCardNumber,
-        startWork,
-        organization,
-        unit,
-        rank,
-        positionGovernment,
-        positionParty,
-        fullPartyMember,
-        probationaryPartyMember,
-        dateOfEnlistment,
-        avatar,
-      },
-      {
-        where: { id: newCommander.id },
-        returning: true,
-      }
-    );
+    // Tạo commander với đầy đủ thông tin
+    const newCommander = await Commander.create({
+      commanderId,
+      fullName,
+      gender,
+      birthday,
+      placeOfBirth,
+      hometown,
+      ethnicity,
+      religion,
+      currentAddress,
+      email,
+      phoneNumber,
+      cccd,
+      partyCardNumber,
+      startWork,
+      organization,
+      unit,
+      rank,
+      positionGovernment,
+      positionParty,
+      fullPartyMember,
+      probationaryPartyMember,
+      dateOfEnlistment,
+      avatar,
+    });
 
-    if (!updatedCommander)
-      return res.status(404).json({ message: "Không tìm thấy chỉ huy" });
+    // Tạo user với commanderId
+    const newUser = await User.create({
+      username: req.body.username,
+      password: hashedPassword,
+      isAdmin: true,
+      commanderId: newCommander.id,
+    });
 
     return res.status(200).json("Tạo commander thành công");
   } catch (error) {
