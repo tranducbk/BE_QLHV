@@ -2002,7 +2002,9 @@ const getExcelCutRice = async (req, res) => {
   try {
     const unitQuery = req.query.unit;
 
-    let students = await Student.findAll();
+    let students = await Student.findAll({
+      include: [{ model: CutRice, as: "cut_rice" }],
+    });
 
     // Lọc theo đơn vị nếu có
     if (unitQuery && unitQuery !== "all") {
@@ -2013,21 +2015,49 @@ const getExcelCutRice = async (req, res) => {
     const cutRices = [];
 
     students.forEach((student) => {
-      if (student.cutRice && student.cutRice.length > 0) {
-        student.cutRice.forEach((cutRice) => {
-          cutRices.push({
-            id: cutRice.id,
-            studentId: student.id,
-            fullName: student.fullName,
-            unit: student.unit,
-            monday: cutRice.monday,
-            tuesday: cutRice.tuesday,
-            wednesday: cutRice.wednesday,
-            thursday: cutRice.thursday,
-            friday: cutRice.friday,
-            saturday: cutRice.saturday,
-            sunday: cutRice.sunday,
-          });
+      if (student.cut_rice && student.cut_rice.weekly) {
+        // Sử dụng cấu trúc mới với weekly field
+        const weekly = student.cut_rice.weekly;
+        cutRices.push({
+          id: student.cut_rice.id,
+          studentId: student.id,
+          fullName: student.fullName,
+          unit: student.unit,
+          monday: weekly.monday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          tuesday: weekly.tuesday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          wednesday: weekly.wednesday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          thursday: weekly.thursday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          friday: weekly.friday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          saturday: weekly.saturday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
+          sunday: weekly.sunday || {
+            breakfast: false,
+            lunch: false,
+            dinner: false,
+          },
         });
       } else {
         // Thêm một dòng placeholder nếu học viên chưa có dữ liệu
