@@ -5,8 +5,8 @@ const commanderRouter = require("./commanderRouter");
 const universityRouter = require("./universityRouter");
 const achievementRouter = require("./achievementRouter");
 const timeRouter = require("./timeRouter");
-const gradeRouter = require("./gradeRouter");
 const semesterRouter = require("./semesterRouter");
+const gradeRouter = require("./gradeRouter");
 
 router.use("/user", userRouter);
 router.use("/student", studentRouter);
@@ -14,7 +14,7 @@ router.use("/commander", commanderRouter);
 router.use("/university", universityRouter);
 router.use("/achievement", achievementRouter);
 router.use("/time", timeRouter);
-router.use("/grade", gradeRouter);
 router.use("/semester", semesterRouter);
+router.use("/grade", gradeRouter);
 
 module.exports = router;

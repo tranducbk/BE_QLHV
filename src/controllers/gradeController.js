@@ -157,7 +157,7 @@ const getStudentGrades = async (req, res) => {
     }, {});
 
     const semesterResults = semesterRows.map((r) => ({
-      _id: r.id,
+      id: r.id,
       semester: r.semester,
       schoolYear: r.schoolYear,
       subjects: subjectsBySemesterId[r.id] || [],
@@ -240,7 +240,7 @@ const getSemesterGrades = async (req, res) => {
       where: { semesterResultId: row.id },
     });
     const targetSemester = {
-      _id: row.id,
+      id: row.id,
       semester: row.semester,
       schoolYear: row.schoolYear,
       subjects: subj.map((s) => ({
@@ -294,7 +294,7 @@ const getSemesterGradesByStudentId = async (req, res) => {
       where: { semesterResultId: row.id },
     });
     const targetSemester = {
-      _id: row.id,
+      id: row.id,
       semester: row.semester,
       schoolYear: row.schoolYear,
       subjects: subj.map((s) => ({
@@ -364,7 +364,9 @@ const addSemesterGrades = async (req, res) => {
       // Validate điểm hệ 10
       const grade10 = parseFloat(gradePoint10);
       if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
-        throw new Error(`Điểm hệ 10 không hợp lệ: ${gradePoint10}`);
+        return res.status(400).json({
+          message: "Điểm hệ 10 phải từ 0 đến 10",
+        });
       }
 
       // Tính điểm chữ từ điểm hệ 10
@@ -405,9 +407,25 @@ const addSemesterGrades = async (req, res) => {
 
     await recalculateAllYearlyResultsSql(user.studentId);
 
+    // Lấy lại semester result với subjects để trả về frontend
+    const createdSemester = await SemesterResult.findByPk(sr.id);
+    const createdSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: sr.id },
+    });
+
     return res.status(201).json({
       message: "Thêm kết quả học tập thành công",
-      semesterResult: await SemesterResult.findByPk(sr.id),
+      semesterResult: {
+        ...createdSemester.toJSON(),
+        subjects: createdSubjects.map((s) => ({
+          subjectCode: s.subjectCode,
+          subjectName: s.subjectName,
+          credits: s.credits,
+          letterGrade: s.letterGrade,
+          gradePoint4: s.gradePoint4,
+          gradePoint10: s.gradePoint10,
+        })),
+      },
     });
   } catch (error) {
     console.error("Error adding semester grades:", error);
@@ -450,7 +468,9 @@ const updateSemesterGrades = async (req, res) => {
       // Validate điểm hệ 10
       const grade10 = parseFloat(gradePoint10);
       if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
-        throw new Error(`Điểm hệ 10 không hợp lệ: ${gradePoint10}`);
+        return res.status(400).json({
+          message: "Điểm hệ 10 phải từ 0 đến 10",
+        });
       }
 
       // Tính điểm chữ từ điểm hệ 10
@@ -485,9 +505,25 @@ const updateSemesterGrades = async (req, res) => {
 
     await recalculateAllYearlyResultsSql(user.studentId);
 
+    // Lấy lại semester result với subjects để trả về frontend
+    const updatedSemester = await SemesterResult.findByPk(sr.id);
+    const updatedSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: sr.id },
+    });
+
     return res.status(200).json({
       message: "Cập nhật kết quả học tập thành công",
-      semesterResult: await SemesterResult.findByPk(sr.id),
+      semesterResult: {
+        ...updatedSemester.toJSON(),
+        subjects: updatedSubjects.map((s) => ({
+          subjectCode: s.subjectCode,
+          subjectName: s.subjectName,
+          credits: s.credits,
+          letterGrade: s.letterGrade,
+          gradePoint4: s.gradePoint4,
+          gradePoint10: s.gradePoint10,
+        })),
+      },
     });
   } catch (error) {
     console.error("Error updating semester grades:", error);
@@ -930,7 +966,7 @@ const updateYearlyResults = async (student, schoolYear) => {
       });
     }
 
-    // Lưu vào database trước để có _id
+    // Lưu vào database trước để có id
     await student.update(student.toJSON());
 
     // Sau khi lưu, cập nhật thông tin năm học cho tất cả học kỳ thuộc năm này
@@ -1262,6 +1298,330 @@ const recalculateAllYearlyResults = async (student) => {
   );
 };
 
+// Lấy kết quả học tập của sinh viên bằng studentId
+const getStudentGradesByStudentId = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const student = await Student.findByPk(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
+    }
+
+    const semesterRows = await SemesterResult.findAll({
+      where: { studentId },
+      order: [
+        ["schoolYear", "ASC"],
+        ["semester", "ASC"],
+      ],
+    });
+    const semesterIds = semesterRows.map((r) => r.id);
+    const subjects = await SubjectResult.findAll({
+      where: { semesterResultId: semesterIds },
+    });
+    const subjectsBySemesterId = subjects.reduce((acc, s) => {
+      if (!acc[s.semesterResultId]) acc[s.semesterResultId] = [];
+      acc[s.semesterResultId].push({
+        subjectCode: s.subjectCode,
+        subjectName: s.subjectName,
+        credits: s.credits,
+        letterGrade: s.letterGrade,
+        gradePoint4: s.gradePoint4,
+        gradePoint10: s.gradePoint10,
+      });
+      return acc;
+    }, {});
+
+    const semesterResults = semesterRows.map((r) => ({
+      id: r.id,
+      semester: r.semester,
+      schoolYear: r.schoolYear,
+      subjects: subjectsBySemesterId[r.id] || [],
+      totalCredits: r.totalCredits,
+      averageGrade4: r.averageGrade4,
+      averageGrade10: r.averageGrade10,
+      cumulativeCredits: r.cumulativeCredits,
+      cumulativeGrade4: r.cumulativeGrade4,
+      cumulativeGrade10: r.cumulativeGrade10,
+      debtCredits: r.debtCredits,
+      failedSubjects: r.failedSubjects,
+      yearlyResultId: r.yearlyResultId,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+
+    const cumulativeGrade4 =
+      gradeHelper.calculateCumulativeGrade4(semesterResults);
+    const cumulativeGrade10 =
+      gradeHelper.calculateCumulativeGrade10(semesterResults);
+
+    const cumulativeGrade10FromCpa4 = (() => {
+      if (cumulativeGrade4 < 2.0) return 0.0;
+      if (cumulativeGrade4 < 2.5)
+        return Math.min(10.0, 3.0 * cumulativeGrade4 - 0.5);
+      if (cumulativeGrade4 < 3.2)
+        return Math.min(10.0, 1.42 * cumulativeGrade4 + 3.45);
+      return Math.min(10.0, 2.5 * cumulativeGrade4 + 0.0);
+    })();
+
+    return res.status(200).json({
+      studentId: student.studentId,
+      fullName: student.fullName,
+      positionParty: student.positionParty,
+      semesterResults,
+      yearlyResults: await YearlyResult.findAll({
+        where: { studentId },
+        order: [["schoolYear", "ASC"]],
+      }),
+      summary: {
+        totalSemesters: semesterResults.length,
+        totalCredits: gradeHelper.calculateCumulativeCredits(semesterResults),
+        cumulativeGrade4,
+        cumulativeGrade10,
+        cumulativeGrade10FromCpa4,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting student grades by studentId:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+// Thêm kết quả học tập cho học kỳ bằng studentId
+const addSemesterGradesByStudentId = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { semester, schoolYear, subjects } = req.body;
+
+    const student = await Student.findByPk(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
+    }
+
+    // Validate dữ liệu
+    if (!semester || !schoolYear || !subjects || !Array.isArray(subjects)) {
+      return res.status(400).json({ message: "Dữ liệu không hợp lệ" });
+    }
+
+    const formattedSemester = gradeHelper.formatSemester(semester);
+
+    // Kiểm tra xem đã có kết quả cho học kỳ này chưa
+    const existingResult = await SemesterResult.findOne({
+      where: { studentId, semester: formattedSemester, schoolYear },
+    });
+
+    if (existingResult) {
+      return res.status(400).json({
+        message: `Đã có kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
+      });
+    }
+
+    // Xử lý dữ liệu môn học
+    const processedSubjects = subjects.map((subject) => {
+      const { subjectCode, subjectName, credits, gradePoint10 } = subject;
+
+      // Validate điểm hệ 10
+      const grade10 = parseFloat(gradePoint10);
+      if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
+        return res.status(400).json({
+          message: "Điểm hệ 10 phải từ 0 đến 10",
+        });
+      }
+
+      // Tính điểm chữ từ điểm hệ 10
+      const letterGrade = gradeHelper.grade10ToLetter(grade10);
+
+      // Tính điểm hệ 4 từ điểm chữ
+      const gradePoint4 = gradeHelper.letterToGrade4(letterGrade);
+
+      return {
+        subjectCode,
+        subjectName,
+        credits,
+        letterGrade,
+        gradePoint4,
+        gradePoint10,
+      };
+    });
+
+    // Tạo SemesterResult + SubjectResult (SQL)
+    const sr = await SemesterResult.create({
+      studentId,
+      semester: formattedSemester,
+      schoolYear,
+      totalCredits: gradeHelper.calculateTotalCredits(processedSubjects),
+      averageGrade4: gradeHelper.calculateAverageGrade4(processedSubjects),
+      averageGrade10: gradeHelper.calculateAverageGrade10(processedSubjects),
+      debtCredits: gradeHelper.calculateDebtCredits(processedSubjects),
+      failedSubjects: gradeHelper.calculateFailedSubjects(processedSubjects),
+      cumulativeCredits: 0,
+      cumulativeGrade4: 0,
+      cumulativeGrade10: 0,
+    });
+    if (processedSubjects.length) {
+      await SubjectResult.bulkCreate(
+        processedSubjects.map((s) => ({ ...s, semesterResultId: sr.id }))
+      );
+    }
+
+    await recalculateAllYearlyResultsSql(studentId);
+
+    // Lấy lại semester result với subjects để trả về frontend
+    const createdSemester = await SemesterResult.findByPk(sr.id);
+    const createdSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: sr.id },
+    });
+
+    return res.status(201).json({
+      message: "Thêm kết quả học tập thành công",
+      semesterResult: {
+        ...createdSemester.toJSON(),
+        subjects: createdSubjects.map((s) => ({
+          subjectCode: s.subjectCode,
+          subjectName: s.subjectName,
+          credits: s.credits,
+          letterGrade: s.letterGrade,
+          gradePoint4: s.gradePoint4,
+          gradePoint10: s.gradePoint10,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error adding semester grades by studentId:", error);
+    return res.status(500).json({ message: error.message || "Lỗi server" });
+  }
+};
+
+// Cập nhật kết quả học tập cho học kỳ bằng studentId
+const updateSemesterGradesByStudentId = async (req, res) => {
+  try {
+    const { studentId, semester, schoolYear } = req.params;
+    const { subjects } = req.body;
+
+    const student = await Student.findByPk(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
+    }
+
+    const formattedSemester = gradeHelper.formatSemester(semester);
+    const sr = await SemesterResult.findOne({
+      where: { studentId, semester: formattedSemester, schoolYear },
+    });
+
+    if (!sr) {
+      return res.status(404).json({
+        message: `Không tìm thấy kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
+      });
+    }
+
+    // Xử lý dữ liệu môn học
+    const processedSubjects = subjects.map((subject) => {
+      const { subjectCode, subjectName, credits, gradePoint10 } = subject;
+
+      // Validate điểm hệ 10
+      const grade10 = parseFloat(gradePoint10);
+      if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
+        return res.status(400).json({
+          message: "Điểm hệ 10 phải từ 0 đến 10",
+        });
+      }
+
+      // Tính điểm chữ từ điểm hệ 10
+      const letterGrade = gradeHelper.grade10ToLetter(grade10);
+
+      // Tính điểm hệ 4 từ điểm chữ
+      const gradePoint4 = gradeHelper.letterToGrade4(letterGrade);
+
+      return {
+        subjectCode,
+        subjectName,
+        credits,
+        letterGrade,
+        gradePoint4,
+        gradePoint10,
+      };
+    });
+
+    await SubjectResult.destroy({ where: { semesterResultId: sr.id } });
+    if (processedSubjects.length) {
+      await SubjectResult.bulkCreate(
+        processedSubjects.map((s) => ({ ...s, semesterResultId: sr.id }))
+      );
+    }
+    await sr.update({
+      totalCredits: gradeHelper.calculateTotalCredits(processedSubjects),
+      averageGrade4: gradeHelper.calculateAverageGrade4(processedSubjects),
+      averageGrade10: gradeHelper.calculateAverageGrade10(processedSubjects),
+      debtCredits: gradeHelper.calculateDebtCredits(processedSubjects),
+      failedSubjects: gradeHelper.calculateFailedSubjects(processedSubjects),
+    });
+
+    await recalculateAllYearlyResultsSql(studentId);
+
+    // Lấy lại semester result với subjects để trả về frontend
+    const updatedSemester = await SemesterResult.findByPk(sr.id);
+    const updatedSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: sr.id },
+    });
+
+    return res.status(200).json({
+      message: "Cập nhật kết quả học tập thành công",
+      semesterResult: {
+        ...updatedSemester.toJSON(),
+        subjects: updatedSubjects.map((s) => ({
+          subjectCode: s.subjectCode,
+          subjectName: s.subjectName,
+          credits: s.credits,
+          letterGrade: s.letterGrade,
+          gradePoint4: s.gradePoint4,
+          gradePoint10: s.gradePoint10,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error updating semester grades by studentId:", error);
+    return res.status(500).json({ message: error.message || "Lỗi server" });
+  }
+};
+
+// Xóa kết quả học tập cho học kỳ bằng studentId
+const deleteSemesterGradesByStudentId = async (req, res) => {
+  try {
+    const { studentId, semester, schoolYear } = req.params;
+
+    const student = await Student.findByPk(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
+    }
+
+    const formattedSemester = gradeHelper.formatSemester(semester);
+    const semesterResult = await SemesterResult.findOne({
+      where: { studentId, semester: formattedSemester, schoolYear },
+    });
+
+    if (!semesterResult) {
+      return res.status(404).json({
+        message: `Không tìm thấy kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
+      });
+    }
+
+    // Xóa tất cả subjects liên quan
+    await SubjectResult.destroy({
+      where: { semesterResultId: semesterResult.id },
+    });
+
+    // Xóa semester result
+    await semesterResult.destroy();
+
+    return res.status(200).json({
+      message: `Đã xóa kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
+    });
+  } catch (error) {
+    console.error("Error deleting semester grades by studentId:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   getStudentGrades,
   getSemesterGrades,
@@ -1275,4 +1635,8 @@ module.exports = {
   convertGrade,
   calculateAverage,
   getSemesterGradesByStudentId,
+  getStudentGradesByStudentId,
+  addSemesterGradesByStudentId,
+  updateSemesterGradesByStudentId,
+  deleteSemesterGradesByStudentId,
 };

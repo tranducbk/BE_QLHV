@@ -1,11 +1,12 @@
 const router = require("express").Router();
-const { verifyToken, isAdmin } = require("../middlewares/verify");
+const { verifyToken } = require("../middlewares/verify");
 const {
   getStudentGrades,
   getSemesterGrades,
   addSemesterGrades,
   updateSemesterGrades,
   deleteSemesterGrades,
+  deleteSemesterGradesById,
   deleteYearlyResult,
   recalculateAllYearlyResultsAPI,
   getGradeInfo,
@@ -14,42 +15,66 @@ const {
   getSemesterGradesByStudentId,
 } = require("../controllers/gradeController");
 
-// Lấy kết quả học tập của sinh viên
+// ===== ROUTES CHO KẾT QUẢ HỌC TẬP (USER - sử dụng userId) =====
+
+// Lấy kết quả học tập của sinh viên (theo userId)
 router.get("/:userId", verifyToken, getStudentGrades);
 
-// Lấy kết quả học tập theo học kỳ
-router.get("/:userId/:semester/:schoolYear", verifyToken, getSemesterGrades);
-
-// Lấy kết quả học tập theo học kỳ cho admin (sử dụng studentId)
+// Lấy kết quả học tập theo học kỳ (theo userId)
 router.get(
-  "/student/:studentId/:semester/:schoolYear",
+  "/:userId/:semester/:schoolYear",
   verifyToken,
-  isAdmin,
-  getSemesterGradesByStudentId
+  getSemesterGrades
 );
 
-// Thêm kết quả học tập cho học kỳ
+// Thêm kết quả học tập cho học kỳ (theo userId)
 router.post("/:userId", verifyToken, addSemesterGrades);
 
-// Cập nhật kết quả học tập cho học kỳ
-router.put("/:userId/:semester/:schoolYear", verifyToken, updateSemesterGrades);
+// Cập nhật kết quả học tập cho học kỳ (theo userId)
+router.put(
+  "/:userId/:semester/:schoolYear",
+  verifyToken,
+  updateSemesterGrades
+);
 
-// Xóa kết quả học tập cho học kỳ
+// Xóa kết quả học tập cho học kỳ (theo userId)
 router.delete(
   "/:userId/:semester/:schoolYear",
   verifyToken,
   deleteSemesterGrades
 );
 
-// Xóa kết quả năm học và tất cả học kỳ thuộc năm đó
-router.delete("/yearly/:userId/:schoolYear", verifyToken, deleteYearlyResult);
+// Xóa kết quả học tập theo ID (để tương thích với frontend cũ)
+router.delete(
+  "/:userId/learn/:learnId",
+  verifyToken,
+  deleteSemesterGradesById
+);
+
+// Xóa kết quả năm học
+router.delete(
+  "/:userId/yearly/:schoolYear",
+  verifyToken,
+  deleteYearlyResult
+);
 
 // Tính toán lại CPA cho tất cả các năm học
 router.post(
-  "/recalculate/:userId",
+  "/:userId/recalculate",
   verifyToken,
   recalculateAllYearlyResultsAPI
 );
+
+// ===== ROUTES CHO ADMIN (sử dụng studentId) =====
+
+// Lấy kết quả học tập theo học kỳ (theo studentId) - cho admin
+router.get(
+  "/student/:studentId/:semester/:schoolYear",
+  verifyToken,
+  getSemesterGradesByStudentId
+);
+
+// ===== UTILITY ROUTES =====
 
 // Lấy thông tin điểm
 router.get("/info/:letterGrade", verifyToken, getGradeInfo);
@@ -58,6 +83,6 @@ router.get("/info/:letterGrade", verifyToken, getGradeInfo);
 router.post("/convert", verifyToken, convertGrade);
 
 // Tính điểm trung bình
-router.post("/average", verifyToken, calculateAverage);
+router.post("/calculate-average", verifyToken, calculateAverage);
 
 module.exports = router;

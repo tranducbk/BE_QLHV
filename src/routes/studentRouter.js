@@ -11,12 +11,8 @@ const {
   updateCutRice,
   deleteCutRice,
   getTuitionFee,
-  getLearningInformation,
-  addLearningInformation,
   deleteTuitionFee,
-  deleteLearningInformation,
   updateTuitionFee,
-  updateLearningResult,
   createAutoCutRice,
   updateAutoCutRice,
   resetAutoCutRice,
@@ -42,6 +38,12 @@ const {
   getTrainingRatings,
   updateTrainingRating,
   deleteTrainingRating,
+  // Grade functions
+  getStudentGradesByStudentId,
+  getSemesterGradesByStudentId,
+  addSemesterGradesByStudentId,
+  updateSemesterGradesByStudentId,
+  deleteSemesterGradesByStudentId,
 } = require("../controllers/studentController");
 
 // Import từ các controller đã tách
@@ -70,58 +72,56 @@ const {
 
 // Student routes
 router.get("/all", verifyToken, getAllStudentsWithHierarchy);
-router.get("/:userId", verifyToken, getStudent);
+
+// Helper route: Get student by userId (for backward compatibility)
+router.get("/by-user/:userId", verifyToken, async (req, res) => {
+  try {
+    const user = await require("../models").User.findByPk(req.params.userId, {
+      include: [{ model: require("../models").Student }],
+    });
+    if (!user || !user.student) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
+    }
+    return res.status(200).json(user.student);
+  } catch (error) {
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+});
+
+router.get("/:studentId", verifyToken, getStudent);
 router.put("/:studentId", verifyToken, updateStudent);
-router.get("/:userId/achievement", verifyToken, getAchievement);
+router.get("/:studentId/achievement", verifyToken, getAchievement);
 
 //CRUD with time_table
-router.get("/:userId/time-table", verifyToken, getTimeTable);
-router.post("/:userId/time-table", verifyToken, createTimeTable);
-router.delete("/:userId/time-table/:scheduleId", verifyToken, deleteTimeTable);
-router.put("/:userId/time-table/:scheduleId", verifyToken, updateTimeTable);
-
-//CRUD with learning_information
-router.get(
-  "/:userId/learning-information",
-  verifyToken,
-  getLearningInformation
-);
-router.post(
-  "/:userId/learning-information",
-  verifyToken,
-  addLearningInformation
-);
+router.get("/:studentId/time-table", verifyToken, getTimeTable);
+router.post("/:studentId/time-table", verifyToken, createTimeTable);
 router.delete(
-  "/:userId/learning-information/:learnId",
+  "/:studentId/time-table/:scheduleId",
   verifyToken,
-  deleteLearningInformation
+  deleteTimeTable
 );
-router.put(
-  "/:userId/learningResult/:learnId",
-  verifyToken,
-  updateLearningResult
-);
+router.put("/:studentId/time-table/:scheduleId", verifyToken, updateTimeTable);
 
 //CRUD with tuitionFee
-router.get("/:userId/tuition-fee", verifyToken, getTuitionFee);
-router.post("/:userId/tuition-fee", verifyToken, addTuitionFee);
-router.delete("/:userId/tuitionFee/:feeId", verifyToken, deleteTuitionFee);
-router.put("/:userId/tuitionFee/:tuitionFeeId", verifyToken, updateTuitionFee);
+router.get("/:studentId/tuition-fee", verifyToken, getTuitionFee);
+router.post("/:studentId/tuition-fee", verifyToken, addTuitionFee);
+router.delete("/:studentId/tuitionFee/:feeId", verifyToken, deleteTuitionFee);
+router.put("/:studentId/tuitionFee/:tuitionFeeId", verifyToken, updateTuitionFee);
 
 // CRUD with cutRice
-router.get("/:userId/cut-rice", verifyToken, getCutRice);
-router.put("/:userId/cut-rice/:cutRiceId", verifyToken, updateCutRice);
-router.post("/:userId/cut-rice", verifyToken, createCutRice);
-router.delete("/:userId/cut-rice/:cutRiceId", verifyToken, deleteCutRice);
+router.get("/:studentId/cut-rice", verifyToken, getCutRice);
+router.put("/:studentId/cut-rice/:cutRiceId", verifyToken, updateCutRice);
+router.post("/:studentId/cut-rice", verifyToken, createCutRice);
+router.delete("/:studentId/cut-rice/:cutRiceId", verifyToken, deleteCutRice);
 
 // Auto cut rice routes
-router.post("/:userId/auto-cut-rice", verifyToken, createAutoCutRice);
-router.put("/:userId/auto-cut-rice", verifyToken, updateAutoCutRice);
-router.put("/:userId/reset-cut-rice", verifyToken, resetAutoCutRice);
-router.put("/:userId/manual-cut-rice", verifyToken, updateManualCutRice);
+router.post("/:studentId/auto-cut-rice", verifyToken, createAutoCutRice);
+router.put("/:studentId/auto-cut-rice", verifyToken, updateAutoCutRice);
+router.put("/:studentId/reset-cut-rice", verifyToken, resetAutoCutRice);
+router.put("/:studentId/manual-cut-rice", verifyToken, updateManualCutRice);
 
 // Debug route để kiểm tra lịch cắt cơm
-router.get("/:userId/debug-cut-rice", verifyToken, debugCutRice);
+router.get("/:studentId/debug-cut-rice", verifyToken, debugCutRice);
 
 // University hierarchy
 router.get(
@@ -226,6 +226,34 @@ router.delete(
   "/:studentId/training-ratings/:trainingRatingId",
   verifyToken,
   deleteTrainingRating
+);
+
+// ===== ROUTES CHO KẾT QUẢ HỌC TẬP (GRADE) =====
+// Lấy kết quả học tập của sinh viên
+router.get("/:studentId/grades", verifyToken, getStudentGradesByStudentId);
+
+// Lấy kết quả học tập theo học kỳ
+router.get(
+  "/:studentId/grades/:semester/:schoolYear",
+  verifyToken,
+  getSemesterGradesByStudentId
+);
+
+// Thêm kết quả học tập cho học kỳ
+router.post("/:studentId/grades", verifyToken, addSemesterGradesByStudentId);
+
+// Cập nhật kết quả học tập cho học kỳ
+router.put(
+  "/:studentId/grades/:semester/:schoolYear",
+  verifyToken,
+  updateSemesterGradesByStudentId
+);
+
+// Xóa kết quả học tập cho học kỳ
+router.delete(
+  "/:studentId/grades/:semester/:schoolYear",
+  verifyToken,
+  deleteSemesterGradesByStudentId
 );
 
 module.exports = router;

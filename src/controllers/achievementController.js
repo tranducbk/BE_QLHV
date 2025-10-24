@@ -126,20 +126,15 @@ const buildAchievementResponse = async (studentId) => {
 // Lấy thông tin khen thưởng của student
 const getStudentAchievement = async (req, res) => {
   try {
-    const { userId } = req.params;
-
-    const user = await User.findByPk(userId, { include: [Student] });
-    if (!user || !user.student) {
-      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
-    }
+    const { studentId } = req.params;
 
     // Đảm bảo có AchievementProfile
     await AchievementProfile.findOrCreate({
-      where: { studentId: user.student.id },
-      defaults: { studentId: user.student.id },
+      where: { studentId },
+      defaults: { studentId },
     });
 
-    const resp = await buildAchievementResponse(user.student.id);
+    const resp = await buildAchievementResponse(studentId);
     return res.status(200).json(resp);
   } catch (error) {
     console.error("Error getting achievement:", error);
@@ -181,7 +176,27 @@ const getStudentsForAdmin = async (req, res) => {
       attributes: ["id", "fullName", "unit", "studentId"],
       order: [["fullName", "ASC"]],
     });
-    return res.status(200).json(students);
+
+    // Populate achievement for each student
+    const studentsWithAchievements = await Promise.all(
+      students.map(async (student) => {
+        try {
+          const achievement = await buildAchievementResponse(student.id);
+          return {
+            ...student.toJSON(),
+            achievement,
+          };
+        } catch (error) {
+          // If no achievement, return student with null achievement
+          return {
+            ...student.toJSON(),
+            achievement: null,
+          };
+        }
+      })
+    );
+
+    return res.status(200).json(studentsWithAchievements);
   } catch (error) {
     console.error("Error getting students:", error);
     return res.status(500).json({ message: "Lỗi server" });
@@ -191,16 +206,9 @@ const getStudentsForAdmin = async (req, res) => {
 // Thêm khen thưởng mới (theo user)
 const addYearlyAchievement = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { studentId } = req.params;
     const { year, decisionNumber, decisionDate, title, scientific, notes } =
       req.body;
-
-    const user = await User.findByPk(userId, { include: [Student] });
-    if (!user || !user.student) {
-      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
-    }
-
-    const studentId = user.student.id;
 
     const existed = await YearlyAchievement.findOne({
       where: { studentId, year: parseInt(year) },
@@ -310,15 +318,9 @@ const addYearlyAchievementByAdmin = async (req, res) => {
 // Cập nhật khen thưởng
 const updateYearlyAchievement = async (req, res) => {
   try {
-    const { userId, year } = req.params;
+    const { studentId, year } = req.params;
     const updateData = req.body;
 
-    const user = await User.findByPk(userId, { include: [Student] });
-    if (!user || !user.student) {
-      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
-    }
-
-    const studentId = user.student.id;
     const ya = await YearlyAchievement.findOne({
       where: { studentId, year: parseInt(year) },
     });
@@ -452,14 +454,8 @@ const updateYearlyAchievementByAdmin = async (req, res) => {
 // Xóa khen thưởng
 const deleteYearlyAchievement = async (req, res) => {
   try {
-    const { userId, year } = req.params;
+    const { studentId, year } = req.params;
 
-    const user = await User.findByPk(userId, { include: [Student] });
-    if (!user || !user.student) {
-      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
-    }
-
-    const studentId = user.student.id;
     await YearlyAchievement.destroy({
       where: { studentId, year: parseInt(year) },
     });
@@ -489,14 +485,9 @@ const deleteYearlyAchievementByAdmin = async (req, res) => {
 // Lấy đề xuất khen thưởng cho năm tiếp theo
 const getRecommendations = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { studentId } = req.params;
 
-    const user = await User.findByPk(userId, { include: [Student] });
-    if (!user || !user.student) {
-      return res.status(404).json({ message: "Không tìm thấy sinh viên" });
-    }
-
-    const resp = await buildAchievementResponse(user.student.id);
+    const resp = await buildAchievementResponse(studentId);
 
     const recommendationsPayload = buildRecommendationsFromResponse(resp);
     return res.status(200).json(recommendationsPayload);

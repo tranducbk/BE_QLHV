@@ -63,18 +63,18 @@ router.delete(
 
 // Routes cho học viên
 // Lấy thông tin khen thưởng của student
-router.get("/:userId", verifyToken, getStudentAchievement);
-
-// Thêm khen thưởng mới
-router.post("/:userId", verifyToken, addYearlyAchievement);
-
-// Cập nhật khen thưởng theo năm
-router.put("/:userId/:year", verifyToken, updateYearlyAchievement);
-
-// Xóa khen thưởng theo năm
-router.delete("/:userId/:year", verifyToken, deleteYearlyAchievement);
+router.get("/:studentId", verifyToken, getStudentAchievement);
 
 // Lấy đề xuất khen thưởng cho năm tiếp theo
-router.get("/:userId/recommendations", verifyToken, getRecommendations);
+router.get("/:studentId/recommendations", verifyToken, getRecommendations);
+
+// Thêm khen thưởng mới
+router.post("/:studentId", verifyToken, addYearlyAchievement);
+
+// Cập nhật khen thưởng theo năm
+router.put("/:studentId/:year", verifyToken, updateYearlyAchievement);
+
+// Xóa khen thưởng theo năm
+router.delete("/:studentId/:year", verifyToken, deleteYearlyAchievement);
 
 module.exports = router;
