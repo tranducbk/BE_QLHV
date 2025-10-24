@@ -15,7 +15,6 @@ const updateClassStudentCount = async (classId) => {
       { where: { id: classId } }
     );
 
-    console.log(`Updated class ${classId} with ${studentCount} students`);
     return studentCount;
   } catch (error) {
     console.error("Error updating class student count:", error);
@@ -32,7 +31,6 @@ const updateAllClassesStudentCount = async () => {
       await updateClassStudentCount(classItem.id);
     }
 
-    console.log("Updated student count for all classes");
   } catch (error) {
     console.error("Error updating all classes student count:", error);
     throw error;
@@ -56,7 +54,6 @@ const addStudentToClass = async (classId) => {
       { where: { id: classId } }
     );
 
-    console.log(
       `Added student to class ${classId}, new count: ${
         classItem.studentCount + 1
       }`
@@ -85,7 +82,6 @@ const removeStudentFromClass = async (classId) => {
       { where: { id: classId } }
     );
 
-    console.log(
       `Removed student from class ${classId}, new count: ${newCount}`
     );
   } catch (error) {
@@ -107,7 +103,6 @@ const transferStudentClass = async (oldClassId, newClassId) => {
       await addStudentToClass(newClassId);
     }
 
-    console.log(
       `Transferred student from class ${oldClassId} to ${newClassId}`
     );
   } catch (error) {

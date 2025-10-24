@@ -404,7 +404,6 @@ const createCommander = async (req, res) => {
 
     return res.status(200).json("Tạo commander thành công");
   } catch (error) {
-    console.log("Đăng ký thất bại: ", error);
     return res.status(500).json({ message: "Đăng ký thất bại" });
   }
 };
@@ -516,7 +515,6 @@ const createStudent = async (req, res) => {
       student: updatedStudent,
     });
   } catch (error) {
-    console.log("Đăng ký thất bại: ", error);
     return res.status(500).json({ message: "Đăng ký thất bại" });
   }
 };
@@ -1118,7 +1116,6 @@ const getLearningResultAll = async (req, res) => {
 const getLearningResults = async (req, res) => {
   try {
     const { semesterData } = req.body;
-    console.log("Semester data received:", semesterData);
 
     const students = await Student.findAll({
       include: [
@@ -1127,18 +1124,15 @@ const getLearningResults = async (req, res) => {
       ],
     });
 
-    console.log("Total students found:", students.length);
 
     let learningResults = [];
 
     students.forEach((student) => {
-      console.log(
         `Student ${student.fullName} has ${
           student.semesterResults?.length || 0
         } learning records`
       );
       (student.semesterResults || []).forEach((learningInformation) => {
-        console.log(
           `Learning record semester: ${learningInformation.semester}, schoolYear: ${learningInformation.schoolYear}`
         );
         learningResults.push({
@@ -1163,14 +1157,12 @@ const getLearningResults = async (req, res) => {
       });
     });
 
-    console.log(
       "Total learning results before filter:",
       learningResults.length
     );
 
     if (semesterData && semesterData.length > 0) {
       // Lọc theo semester và schoolYear
-      console.log("Filtering by semester data:", semesterData);
 
       learningResults = learningResults.filter((learningResult) => {
         const matches = semesterData.some((filterItem) => {
@@ -1178,7 +1170,6 @@ const getLearningResults = async (req, res) => {
           const schoolYearMatch =
             filterItem.schoolYear === learningResult.schoolYear;
           const result = semesterMatch && schoolYearMatch;
-          console.log(
             `Checking: ${learningResult.semester}-${learningResult.schoolYear} vs ${filterItem.semester}-${filterItem.schoolYear} = ${result}`
           );
           return result;
@@ -1187,7 +1178,6 @@ const getLearningResults = async (req, res) => {
       });
     }
 
-    console.log("Final learning results count:", learningResults.length);
     return res.status(200).json(learningResults);
   } catch (error) {
     console.error("Error in getLearningResults:", error);
@@ -2763,7 +2753,6 @@ const getPdfTuitionFee = async (req, res) => {
         );
 
         if (!isIncluded) {
-          console.log(tuitionFee.unit);
         }
 
         return isIncluded;
@@ -4540,7 +4529,6 @@ const getExcelCutRiceWithSchedule = async (req, res) => {
     );
 
     allRows.slice(0, 3).forEach((row, index) => {
-      console.log(`Row ${index + 1}:`, {
         studentName: row.student.fullName,
         unit: row.student.unit,
         day: row.dayNumber,
@@ -4554,7 +4542,6 @@ const getExcelCutRiceWithSchedule = async (req, res) => {
         },
       });
     });
-    console.log(
       "Students with cut rice details:",
       studentsWithCutRice.map((s) => ({
         id: s.id,
@@ -4619,11 +4606,8 @@ const getExcelCutRiceWithSchedule = async (req, res) => {
       include: [Student],
     });
 
-    console.log("Student IDs to find:", studentIds);
-    console.log("TimeTables found:", timeTables.length);
 
     timeTables.forEach((tt, index) => {
-      console.log(`TimeTable ${index + 1}:`, {
         studentId: tt.studentId?.id,
         studentName: tt.studentId?.fullName,
         schedulesCount: tt.schedules?.length || 0,
@@ -5066,12 +5050,9 @@ const getYearlyResults = async (req, res) => {
 const getYearlyStatistics = async (req, res) => {
   try {
     const { schoolYear } = req.query;
-    console.log("=== getYearlyStatistics START ===");
-    console.log("Query parameters:", { schoolYear });
 
     // Nếu không có schoolYear, lấy tất cả dữ liệu
     if (!schoolYear) {
-      console.log("No schoolYear provided, fetching all data");
     }
 
     // Lấy tất cả students với thông tin đầy đủ
@@ -5082,13 +5063,11 @@ const getYearlyStatistics = async (req, res) => {
       ],
     });
 
-    console.log("Total students found:", students.length);
 
     let yearlyResults = [];
 
     // Lặp qua từng student để tính toán kết quả năm học
     for (const student of students) {
-      console.log(
         `Processing student: ${student.fullName} (${student.studentId})`
       );
 
@@ -5104,7 +5083,6 @@ const getYearlyStatistics = async (req, res) => {
           );
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for school year ${schoolYear}`);
             continue;
           }
         } else {
@@ -5112,12 +5090,10 @@ const getYearlyStatistics = async (req, res) => {
           yearResults = semesterResults;
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for student`);
             continue;
           }
         }
 
-        console.log(
           `  - Found ${yearResults.length} semester results for ${schoolYear}`
         );
 
@@ -5227,7 +5203,6 @@ const getYearlyStatistics = async (req, res) => {
             debtCredits: yearlyDebtCredits,
           };
 
-          console.log(
             `  - Yearly result: ${yearlyResult.fullName} - GPA: ${yearlyGPA}, CPA: ${cumulativeGPA}`
           );
           yearlyResults.push(yearlyResult);
@@ -5306,7 +5281,6 @@ const getYearlyStatistics = async (req, res) => {
                 failedSubjects: yearlyResult.failedSubjects || 0,
               };
 
-              console.log(
                 `  - Yearly result for ${yearlyResult.schoolYear}: ${result.fullName} - GPA: ${yearlyGPA}, CPA: ${cumulativeGPA}`
               );
               yearlyResults.push(result);
@@ -5391,7 +5365,6 @@ const getYearlyStatistics = async (req, res) => {
                 failedSubjects: 0,
               };
 
-              console.log(
                 `  - Yearly result for ${year}: ${yearlyResult.fullName} - GPA: ${yearlyGPA}, CPA: ${cumulativeGPA}`
               );
               yearlyResults.push(yearlyResult);
@@ -5399,12 +5372,9 @@ const getYearlyStatistics = async (req, res) => {
           }
         }
       } catch (error) {
-        console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    console.log("=== getYearlyStatistics END ===");
-    console.log("Final yearly results count:", yearlyResults.length);
 
     return res.status(200).json(yearlyResults);
   } catch (error) {
@@ -5418,8 +5388,6 @@ const getAllStudentsForPartyRating = async (req, res) => {
   try {
     const { schoolYear, page = 1, pageSize = 10 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
-    console.log("=== getAllStudentsForPartyRating START ===");
-    console.log("Query parameters:", { schoolYear, page, pageSize });
 
     // Lấy students với phân trang
     const students = await Student.findAll({
@@ -5431,13 +5399,11 @@ const getAllStudentsForPartyRating = async (req, res) => {
       limit: parseInt(pageSize),
     });
 
-    console.log("Total students found:", students.length);
 
     let partyRatings = [];
 
     // Lặp qua từng student để tạo dữ liệu xếp loại Đảng viên
     for (const student of students) {
-      console.log(
         `Processing student: ${student.fullName} (${student.studentId})`
       );
 
@@ -5446,7 +5412,6 @@ const getAllStudentsForPartyRating = async (req, res) => {
         const semesterResults = student.semesterResults || [];
         const yearlyResults = student.yearlyResults || [];
 
-        console.log(
           `  - Semester results: ${semesterResults.length}, Yearly results: ${yearlyResults.length}`
         );
 
@@ -5459,12 +5424,10 @@ const getAllStudentsForPartyRating = async (req, res) => {
             yearlyResults.some((result) => result.schoolYear === schoolYear);
 
           if (!hasDataForYear) {
-            console.log(`  - No data for school year ${schoolYear}, skipping`);
             continue;
           }
         } else if (semesterResults.length === 0 && yearlyResults.length === 0) {
           // Nếu không có dữ liệu học tập nào, tạo entry mặc định
-          console.log(`  - No academic data, creating default entry`);
         }
 
         // Xác định schoolYear cho sinh viên
@@ -5501,17 +5464,13 @@ const getAllStudentsForPartyRating = async (req, res) => {
           partyRating: student.partyRating || null,
         };
 
-        console.log(
           `  - Party rating: ${partyRating.fullName} - Position: ${partyRating.positionParty} - SchoolYear: ${partyRating.schoolYear}`
         );
         partyRatings.push(partyRating);
       } catch (error) {
-        console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    console.log("=== getAllStudentsForPartyRating END ===");
-    console.log("Final party ratings count:", partyRatings.length);
 
     // Tính tổng số students để phân trang
     const totalStudents = await Student.countDocuments();
@@ -5538,8 +5497,6 @@ const getAllStudentsForPartyRating = async (req, res) => {
 const getPartyRatings = async (req, res) => {
   try {
     const { schoolYear } = req.query;
-    console.log("=== getPartyRatings START ===");
-    console.log("Query parameters:", { schoolYear });
 
     // Lấy tất cả students với thông tin đầy đủ
     const students = await Student.findAll({
@@ -5549,13 +5506,11 @@ const getPartyRatings = async (req, res) => {
       ],
     });
 
-    console.log("Total students found:", students.length);
 
     let partyRatings = [];
 
     // Lặp qua từng student để lấy dữ liệu xếp loại Đảng viên
     for (const student of students) {
-      console.log(
         `Processing student: ${student.fullName} (${student.studentId})`
       );
 
@@ -5571,7 +5526,6 @@ const getPartyRatings = async (req, res) => {
           );
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for school year ${schoolYear}`);
             continue;
           }
         } else {
@@ -5579,7 +5533,6 @@ const getPartyRatings = async (req, res) => {
           yearResults = semesterResults;
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for student`);
             continue;
           }
         }
@@ -5616,7 +5569,6 @@ const getPartyRatings = async (req, res) => {
             partyRating: existingYearlyResult?.partyRating || null,
           };
 
-          console.log(
             `  - Party rating: ${partyRating.fullName} - Position: ${partyRating.positionParty}`
           );
           partyRatings.push(partyRating);
@@ -5650,7 +5602,6 @@ const getPartyRatings = async (req, res) => {
                 partyRating: yearlyResult.partyRating || null,
               };
 
-              console.log(
                 `  - Party rating for ${yearlyResult.schoolYear}: ${result.fullName} - Position: ${result.positionParty}`
               );
               partyRatings.push(result);
@@ -5693,7 +5644,6 @@ const getPartyRatings = async (req, res) => {
                 partyRating: null,
               };
 
-              console.log(
                 `  - Party rating for ${year}: ${partyRating.fullName} - Position: ${partyRating.positionParty}`
               );
               partyRatings.push(partyRating);
@@ -5701,12 +5651,9 @@ const getPartyRatings = async (req, res) => {
           }
         }
       } catch (error) {
-        console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    console.log("=== getPartyRatings END ===");
-    console.log("Final party ratings count:", partyRatings.length);
 
     return res.status(200).json(partyRatings);
   } catch (error) {
@@ -5720,8 +5667,6 @@ const getAllStudentsForTrainingRating = async (req, res) => {
   try {
     const { schoolYear, page = 1, pageSize = 10 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
-    console.log("=== getAllStudentsForTrainingRating START ===");
-    console.log("Query parameters:", { schoolYear, page, pageSize });
 
     // Lấy students với phân trang
     const students = await Student.findAll({
@@ -5733,13 +5678,11 @@ const getAllStudentsForTrainingRating = async (req, res) => {
       limit: parseInt(pageSize),
     });
 
-    console.log("Total students found:", students.length);
 
     let trainingRatings = [];
 
     // Lặp qua từng student để tạo dữ liệu xếp loại rèn luyện
     for (const student of students) {
-      console.log(
         `Processing student: ${student.fullName} (${student.studentId})`
       );
 
@@ -5748,7 +5691,6 @@ const getAllStudentsForTrainingRating = async (req, res) => {
         const semesterResults = student.semesterResults || [];
         const yearlyResults = student.yearlyResults || [];
 
-        console.log(
           `  - Semester results: ${semesterResults.length}, Yearly results: ${yearlyResults.length}`
         );
 
@@ -5761,12 +5703,10 @@ const getAllStudentsForTrainingRating = async (req, res) => {
             yearlyResults.some((result) => result.schoolYear === schoolYear);
 
           if (!hasDataForYear) {
-            console.log(`  - No data for school year ${schoolYear}, skipping`);
             continue;
           }
         } else if (semesterResults.length === 0 && yearlyResults.length === 0) {
           // Nếu không có dữ liệu học tập nào, tạo entry mặc định
-          console.log(`  - No academic data, creating default entry`);
         }
 
         // Xác định schoolYear cho sinh viên
@@ -5802,17 +5742,13 @@ const getAllStudentsForTrainingRating = async (req, res) => {
           trainingRating: student.trainingRating || null,
         };
 
-        console.log(
           `  - Training rating: ${trainingRating.fullName} - Rating: ${trainingRating.trainingRating} - SchoolYear: ${trainingRating.schoolYear}`
         );
         trainingRatings.push(trainingRating);
       } catch (error) {
-        console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    console.log("=== getAllStudentsForTrainingRating END ===");
-    console.log("Final training ratings count:", trainingRatings.length);
 
     // Tính tổng số students để phân trang
     const totalStudents = await Student.countDocuments();
@@ -5839,8 +5775,6 @@ const getAllStudentsForTrainingRating = async (req, res) => {
 const getTrainingRatings = async (req, res) => {
   try {
     const { schoolYear } = req.query;
-    console.log("=== getTrainingRatings START ===");
-    console.log("Query parameters:", { schoolYear });
 
     // Lấy tất cả students với thông tin đầy đủ
     const students = await Student.findAll({
@@ -5850,13 +5784,11 @@ const getTrainingRatings = async (req, res) => {
       ],
     });
 
-    console.log("Total students found:", students.length);
 
     let trainingRatings = [];
 
     // Lặp qua từng student để lấy dữ liệu xếp loại rèn luyện
     for (const student of students) {
-      console.log(
         `Processing student: ${student.fullName} (${student.studentId})`
       );
 
@@ -5872,7 +5804,6 @@ const getTrainingRatings = async (req, res) => {
           );
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for school year ${schoolYear}`);
             continue;
           }
         } else {
@@ -5880,7 +5811,6 @@ const getTrainingRatings = async (req, res) => {
           yearResults = semesterResults;
 
           if (yearResults.length === 0) {
-            console.log(`  - No results found for student`);
             continue;
           }
         }
@@ -5917,7 +5847,6 @@ const getTrainingRatings = async (req, res) => {
             trainingRating: existingYearlyResult?.trainingRating || null,
           };
 
-          console.log(
             `  - Training rating: ${trainingRating.fullName} - Rating: ${trainingRating.trainingRating}`
           );
           trainingRatings.push(trainingRating);
@@ -5951,7 +5880,6 @@ const getTrainingRatings = async (req, res) => {
                 trainingRating: yearlyResult.trainingRating || null,
               };
 
-              console.log(
                 `  - Training rating for ${yearlyResult.schoolYear}: ${result.fullName} - Rating: ${result.trainingRating}`
               );
               trainingRatings.push(result);
@@ -5994,7 +5922,6 @@ const getTrainingRatings = async (req, res) => {
                 trainingRating: null,
               };
 
-              console.log(
                 `  - Training rating for ${year}: ${trainingRating.fullName} - Rating: ${trainingRating.trainingRating}`
               );
               trainingRatings.push(trainingRating);
@@ -6002,12 +5929,9 @@ const getTrainingRatings = async (req, res) => {
           }
         }
       } catch (error) {
-        console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    console.log("=== getTrainingRatings END ===");
-    console.log("Final training ratings count:", trainingRatings.length);
 
     return res.status(200).json(trainingRatings);
   } catch (error) {
@@ -6686,19 +6610,13 @@ const getExcelPoliticalManagement = async (req, res) => {
       order: [["studentId", "ASC"]],
     });
 
-    console.log(
       `Tìm thấy ${students.length} sinh viên cho năm học ${schoolYear}`
     );
 
     // Log chi tiết từng sinh viên
     students.forEach((student, index) => {
-      console.log(`\n--- Sinh viên ${index + 1}: ${student.fullName} ---`);
-      console.log(`- Student ID: ${student.studentId}`);
-      console.log(`- Enrollment: ${student.enrollment}`);
-      console.log(
         `- Graduation Date: ${student.graduationDate || "Chưa ra trường"}`
       );
-      console.log(`- Unit: ${student.unit}`);
     });
 
     if (students.length === 0) {
@@ -6832,9 +6750,7 @@ const getExcelPoliticalManagement = async (req, res) => {
       return a.fullName.localeCompare(b.fullName, "vi");
     });
 
-    console.log("\n=== THỨ TỰ SẮP XẾP SINH VIÊN ===");
     students.forEach((student, index) => {
-      console.log(`${index + 1}. ${student.fullName} - ${student.unit}`);
     });
 
     students.forEach((student, index) => {
@@ -6848,18 +6764,12 @@ const getExcelPoliticalManagement = async (req, res) => {
         yearlyResult = student.yearlyResults.sort((a, b) =>
           b.schoolYear.localeCompare(a.schoolYear)
         )[0];
-        console.log(
           `⚠️ Không tìm thấy yearlyResult cho ${schoolYear}, sử dụng ${yearlyResult.schoolYear}`
         );
       }
 
       const achievement = student.achievement;
 
-      console.log(`\n--- Sinh viên ${index + 1}: ${student.fullName} ---`);
-      console.log(`- Yearly Result cho ${schoolYear}:`, yearlyResult);
-      console.log(`- Achievement:`, achievement);
-      console.log(`- Party Rating:`, yearlyResult?.partyRating);
-      console.log(`- Training Rating:`, yearlyResult?.trainingRating);
 
       const familyInfo = student.familyMembers
         .map(
@@ -6894,22 +6804,16 @@ const getExcelPoliticalManagement = async (req, res) => {
       const partyRating = yearlyResult?.partyRating?.rating || "";
       const trainingRating = yearlyResult?.trainingRating || "Chưa đánh giá";
 
-      console.log(`- Thông tin Đảng:`);
-      console.log(
         `  + Vào Đảng: ${student.probationaryPartyMember} -> ${partyJoinDate}`
       );
-      console.log(
         `  + Chính thức: ${student.fullPartyMember} -> ${partyOfficialDate}`
       );
-      console.log(`  + Xếp loại Đảng viên: ${partyRating}`);
-      console.log(`  + Xếp loại rèn luyện: ${trainingRating}`);
 
       let cstt = "",
         cstd = "",
         bkBqp = "",
         cstdTq = "";
 
-      console.log(`- Yearly Achievements:`, achievement?.yearlyAchievements);
 
       if (achievement && achievement.yearlyAchievements) {
         const targetYear = parseInt(schoolYear.split("-")[0]);
@@ -6925,12 +6829,10 @@ const getExcelPoliticalManagement = async (req, res) => {
           currentYearAchievement = achievement.yearlyAchievements.sort(
             (a, b) => b.year - a.year
           )[0];
-          console.log(
             `⚠️ Không tìm thấy achievement cho năm ${targetYear}, sử dụng năm ${currentYearAchievement.year}`
           );
         }
 
-        console.log(
           `- Current Year Achievement (${targetYear}):`,
           currentYearAchievement
         );
@@ -6943,7 +6845,6 @@ const getExcelPoliticalManagement = async (req, res) => {
         }
       }
 
-      console.log(
         `- Khen thưởng: CSTT=${cstt}, CSTĐ=${cstd}, BK BQP=${bkBqp}, CSTĐ TQ=${cstdTq}`
       );
 
@@ -7109,18 +7010,15 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
         studentQuery = { unit };
       }
 
-      console.log("Student query:", studentQuery);
       const students = await Student.findAll({
         where: studentQuery,
         attributes: ["id"],
       });
       const studentIds = students.map((s) => s.id);
-      console.log("Found students:", studentIds.length);
 
       timeTableQuery = { studentId: { [Op.in]: studentIds } };
     }
 
-    console.log("TimeTable query:", timeTableQuery);
     const timeTableData = await TimeTable.findAll({
       where: timeTableQuery,
       include: [
@@ -7313,9 +7211,6 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
     } catch (error) {}
 
     // Debug: Log thông tin để kiểm tra
-    console.log("TimeTable data found:", timeTableData.length);
-    console.log("Students in map:", studentsMap.size);
-    console.log(
       "Students with schedules:",
       Array.from(studentsMap.values()).filter((s) => s.schedules.length > 0)
         .length
@@ -7323,7 +7218,6 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
 
     // Lọc và sắp xếp sinh viên - chỉ hiển thị sinh viên có lịch học
     const allStudents = Array.from(studentsMap.values());
-    console.log(
       "All students in map:",
       allStudents.map((s) => ({
         name: s.fullName,
@@ -7348,13 +7242,11 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
         return a.fullName.localeCompare(b.fullName, "vi");
       });
 
-    console.log("Final students to process:", students.length);
 
     let rowIndex = 5; // Dữ liệu bắt đầu từ row 5
     let studentIndex = 1;
 
     students.forEach((student) => {
-      console.log(
         `Processing student: ${student.fullName}, schedules: ${student.schedules.length}`
       );
       // Sắp xếp lịch học theo thứ
@@ -7438,7 +7330,6 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
 
           let studentInfo = "";
           if (isFirstInGroup) {
-            console.log("student123", student);
             const universityName =
               typeof student.university === "object" &&
               student.university?.universityName
@@ -7491,7 +7382,6 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
             isFirstInGroup ? cutRiceForDay.dinner : "",
           ];
 
-          console.log(
             `Adding row for ${student.fullName}: ${schedule.subject} - ${schedule.time}`
           );
           const row = worksheet.addRow(rowData);

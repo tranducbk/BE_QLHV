@@ -97,20 +97,15 @@ const createTimeTable = async (req, res) => {
 const deleteTimeTable = async (req, res) => {
   try {
     const { studentId, scheduleId } = req.params;
-    console.log("DEBUG - deleteTimeTable - studentId:", studentId);
-    console.log("DEBUG - deleteTimeTable - scheduleId:", scheduleId);
 
     const timeTable = await TimeTable.findOne({
       where: { studentId: studentId },
     });
 
     if (!timeTable) {
-      console.log("DEBUG - TimeTable not found for studentId:", studentId);
       return res.status(404).json({ message: "TimeTable không tồn tại" });
     }
 
-    console.log("DEBUG - TimeTable found:", timeTable.id);
-    console.log("DEBUG - Current schedules:", timeTable.schedules);
 
     // Tìm schedule cụ thể trong mảng schedules bằng id
     const currentSchedules = timeTable.schedules || [];
@@ -118,16 +113,13 @@ const deleteTimeTable = async (req, res) => {
       (schedule) => schedule.id === scheduleId
     );
 
-    console.log("DEBUG - Schedule index found:", scheduleIndex);
 
     if (scheduleIndex === -1) {
-      console.log("DEBUG - Schedule not found with id:", scheduleId);
       return res.status(404).json({ message: "Schedule không tồn tại" });
     }
 
     // Xóa schedule tại vị trí tìm được
     currentSchedules.splice(scheduleIndex, 1);
-    console.log("DEBUG - Schedules after splice:", currentSchedules);
 
     // Sử dụng raw SQL để cập nhật JSONB field
     const { sequelize } = require("../services/sequelize");
@@ -139,7 +131,6 @@ const deleteTimeTable = async (req, res) => {
       }
     );
 
-    console.log("DEBUG - SQL update completed");
 
     // Tự động cập nhật lịch cắt cơm sau khi xóa (chỉ sử dụng SQL)
     try {
@@ -150,7 +141,6 @@ const deleteTimeTable = async (req, res) => {
         studentId,
         cutRiceSchedule
       );
-      console.log("DEBUG - Auto cut rice updated successfully");
     } catch (autoCutError) {
       console.error("Error updating auto cut rice:", autoCutError);
       // Không throw error để không ảnh hưởng đến việc xóa lịch học

@@ -11,7 +11,6 @@ const MEAL_TIMES = {
 
 // Tạo lịch cắt cơm tự động - DEPRECATED (chỉ dùng SQL)
 const generateAutoCutRiceSchedule = async (studentId) => {
-  console.warn(
     "generateAutoCutRiceSchedule is deprecated, use generateCutRiceScheduleSQL instead"
   );
   return await generateCutRiceScheduleSQL(studentId);
@@ -19,7 +18,6 @@ const generateAutoCutRiceSchedule = async (studentId) => {
 
 // Cập nhật lịch cắt cơm tự động cho sinh viên - DEPRECATED (chỉ dùng SQL)
 const updateAutoCutRice = async (studentId) => {
-  console.warn(
     "updateAutoCutRice is deprecated, use updateAutoCutRiceWithSchedule instead"
   );
   const cutRiceSchedule = await generateCutRiceScheduleSQL(studentId);
@@ -64,7 +62,6 @@ const updateAutoCutRiceWithSchedule = async (studentId, cutRiceSchedule) => {
 
 // Reset về lịch cắt cơm tự động - DEPRECATED (chỉ dùng SQL)
 const resetToAutoCutRice = async (studentId) => {
-  console.warn(
     "resetToAutoCutRice is deprecated, use generateCutRiceScheduleSQL + updateAutoCutRiceWithSchedule instead"
   );
   const cutRiceSchedule = await generateCutRiceScheduleSQL(studentId);

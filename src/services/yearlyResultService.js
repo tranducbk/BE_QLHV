@@ -104,7 +104,6 @@ const updateYearlyResults = async (studentId, schoolYear) => {
       await yearlyResult.update(yearlyResultData);
     }
 
-    console.log(
       `Đã cập nhật yearlyResults cho học viên ${studentId}, năm học ${schoolYear}`
     );
 

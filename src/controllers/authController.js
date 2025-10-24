@@ -144,7 +144,6 @@ const Register = async (req, res) => {
     }
     return res.status(201).json({ message: "Đăng ký thành công" });
   } catch (error) {
-    console.log("Đăng ký thất bại: ", error);
     return res.status(500).json({ message: "Đăng ký thất bại" });
   }
 };
