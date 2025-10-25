@@ -1053,7 +1053,15 @@ const getTuitionFees = async (req, res) => {
 
     const fees = await TuitionFee.findAll({ where });
     const studentIds = [...new Set(fees.map((f) => f.studentId))];
-    const students = await Student.findAll({ where: { id: studentIds } });
+    const students = await Student.findAll({
+      where: { id: studentIds },
+      include: [
+        {
+          model: University,
+          attributes: ["universityName"],
+        },
+      ],
+    });
     const idToStudent = Object.fromEntries(students.map((s) => [s.id, s]));
 
     const tuitionFees = fees.map((f) => {
@@ -1062,7 +1070,7 @@ const getTuitionFees = async (req, res) => {
         id: f.id,
         studentId: f.studentId,
         fullName: s ? s.fullName : "",
-        university: s && s.universityName ? s.universityName : "",
+        university: s && s.university ? s.university.universityName : "",
         unit: s ? s.unit : "",
         className: s && s.className ? s.className : "",
         totalAmount: f.totalAmount,
@@ -1160,7 +1168,7 @@ const getLearningResults = async (req, res) => {
     let learningResults = [];
 
     students.forEach((student) => {
-      (student.semester_results || []).forEach((learningInformation) => {
+      student.semester_results.forEach((learningInformation) => {
         learningResults.push({
           id: learningInformation.id,
           studentId: student.id,
@@ -3842,11 +3850,41 @@ const getAllStudentsGrades = async (req, res) => {
       limit: parseInt(pageSize),
     });
 
+    // Load subjects từ subject_results table cho MỌI semester results
+    const allSemesterResultIds = students.flatMap(
+      (student) => (student.semester_results || []).map((sr) => sr.id)
+    );
+
+    const SubjectResult = require("../models").SubjectResult;
+    const allSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: allSemesterResultIds },
+    });
+
+    // Group subjects by semesterResultId
+    const subjectsBySemesterId = allSubjects.reduce((acc, s) => {
+      if (!acc[s.semesterResultId]) acc[s.semesterResultId] = [];
+      acc[s.semesterResultId].push({
+        subjectCode: s.subjectCode,
+        subjectName: s.subjectName,
+        credits: s.credits,
+        letterGrade: s.letterGrade,
+        gradePoint4: s.gradePoint4,
+        gradePoint10: s.gradePoint10,
+      });
+      return acc;
+    }, {});
+
     let allLearningResults = [];
 
     for (const student of students) {
       try {
         const semesterResults = student.semester_results || [];
+
+        // Gắn subjects từ subject_results table vào từng semester result
+        semesterResults.forEach((sr) => {
+          sr.subjects = subjectsBySemesterId[sr.id] || [];
+        });
+
         if (semesterResults.length > 0) {
           semesterResults.map((r) => ({
             semester: r.semester,
@@ -3898,6 +3936,13 @@ const getAllStudentsGrades = async (req, res) => {
           const subjects = Array.isArray(result.subjects)
             ? result.subjects
             : [];
+
+          // DEBUG LOGGING
+          console.log(
+            `\n=== Processing result for ${result.semester} ${result.schoolYear} ===`
+          );
+          console.log(`Subjects count: ${subjects.length}`);
+
           const normalizedSubjects = subjects.map((s) => {
             let letter = s.letterGrade;
             if (!letter) {
@@ -3909,6 +3954,17 @@ const getAllStudentsGrades = async (req, res) => {
             }
             const gradePoint4 = gradeHelper.letterToGrade4(letter);
             const gradePoint10 = gradeHelper.letterToGrade10(letter);
+
+            // DEBUG: Log subject details
+            if (letter === "F" || gradePoint4 === 0) {
+              console.log(`  [FAILED] ${s.subjectName}:`, {
+                originalLetter: s.letterGrade,
+                normalizedLetter: letter,
+                gradePoint4,
+                credits: s.credits,
+              });
+            }
+
             return {
               ...(s.toObject?.() || s),
               letterGrade: letter,
@@ -3922,51 +3978,62 @@ const getAllStudentsGrades = async (req, res) => {
           const debtCredits =
             gradeHelper.calculateDebtCredits(normalizedSubjects);
 
-          const learningResult = {
-            id: result.id,
-            studentId: student.id,
-            fullName: student.fullName,
-            studentCode: student.studentId,
-            university: student.university?.universityName || "",
-            className: student.class?.className || "",
-            unit: student.unit || "",
-            positionParty: student.positionParty || "Không",
-            semester: result.semester,
-            schoolYear: result.schoolYear,
-            yearlyResults: student.yearly_results || [],
-            GPA: result.averageGrade4?.toFixed(2) || "0.00",
-            CPA: result.cumulativeGrade4?.toFixed(2) || "0.00",
-            semesterGPA: result.averageGrade4?.toFixed(2) || "0.00",
-            semesterGPA10: result.averageGrade10?.toFixed(2) || "0.00",
-            cumulativeCredit: result.cumulativeCredits || 0,
-            totalDebt: result.totalDebt || 0,
-            studentLevel: result.studentLevel || 1,
-            warningLevel: result.warningLevel || 0,
-            subjects: normalizedSubjects,
-            totalCredits: result.totalCredits || 0,
-            averageGrade10: result.averageGrade10?.toFixed(2) || "0.00",
-            cumulativeGrade10FromCpa4: (() => {
-              const cpa4 = parseFloat(result.cumulativeGrade4) || 0;
-              if (cpa4 < 2.0) return "0.00";
-              if (cpa4 < 2.5)
-                return Math.min(10.0, 3.0 * cpa4 - 0.5).toFixed(2);
-              if (cpa4 < 3.2)
-                return Math.min(10.0, 1.42 * cpa4 + 3.45).toFixed(2);
-              return Math.min(10.0, 2.5 * cpa4 + 0.0).toFixed(2);
-            })(),
-            debtCredits,
-            failedSubjects,
-            semesterResults: [
-              {
-                ...(result.toObject?.() || result),
-                subjects: normalizedSubjects,
-                debtCredits,
-                failedSubjects,
-              },
-            ],
-          };
+          // DEBUG: Log results
+          console.log(`CALCULATED: failedSubjects=${failedSubjects}, debtCredits=${debtCredits}`);
+          console.log("===\n");
 
-          allLearningResults.push(learningResult);
+          // Chỉ thêm vào kết quả nếu có subjects data
+          if (normalizedSubjects.length > 0) {
+            const learningResult = {
+              id: result.id,
+              studentId: student.id,
+              fullName: student.fullName,
+              studentCode: student.studentId,
+              university: student.university?.universityName || "",
+              className: student.class?.className || "",
+              unit: student.unit || "",
+              positionParty: student.positionParty || "Không",
+              semester: result.semester,
+              schoolYear: result.schoolYear,
+              yearlyResults: student.yearly_results || [],
+              GPA: result.averageGrade4?.toFixed(2) || "0.00",
+              CPA: result.cumulativeGrade4?.toFixed(2) || "0.00",
+              semesterGPA: result.averageGrade4?.toFixed(2) || "0.00",
+              semesterGPA10: result.averageGrade10?.toFixed(2) || "0.00",
+              cumulativeCredit: result.cumulativeCredits || 0,
+              totalDebt: result.totalDebt || 0,
+              studentLevel: result.studentLevel || 1,
+              warningLevel: result.warningLevel || 0,
+              subjects: normalizedSubjects,
+              totalCredits: result.totalCredits || 0,
+              averageGrade10: result.averageGrade10?.toFixed(2) || "0.00",
+              cumulativeGrade10FromCpa4: (() => {
+                const cpa4 = parseFloat(result.cumulativeGrade4) || 0;
+                if (cpa4 < 2.0) return "0.00";
+                if (cpa4 < 2.5)
+                  return Math.min(10.0, 3.0 * cpa4 - 0.5).toFixed(2);
+                if (cpa4 < 3.2)
+                  return Math.min(10.0, 1.42 * cpa4 + 3.45).toFixed(2);
+                return Math.min(10.0, 2.5 * cpa4 + 0.0).toFixed(2);
+              })(),
+              debtCredits,
+              failedSubjects,
+              semesterResults: [
+                {
+                  ...(result.toObject?.() || result),
+                  subjects: normalizedSubjects,
+                  debtCredits,
+                  failedSubjects,
+                },
+              ],
+            };
+
+            allLearningResults.push(learningResult);
+          } else {
+            console.log(
+              `⚠ Skipping ${student.fullName} - ${result.semester} ${result.schoolYear}: No subjects data`
+            );
+          }
         });
       } catch (error) {
         console.error(`Error processing student ${student.id}:`, error);
@@ -5184,6 +5251,30 @@ const getYearlyStatistics = async (req, res) => {
 
     console.log(`Found ${students.length} students`);
 
+    // Load subjects từ subject_results table cho MỌI semester results
+    const allSemesterResultIds = students.flatMap(
+      (student) => (student.semester_results || []).map((sr) => sr.id)
+    );
+
+    const SubjectResult = require("../models").SubjectResult;
+    const allSubjects = await SubjectResult.findAll({
+      where: { semesterResultId: allSemesterResultIds },
+    });
+
+    // Group subjects by semesterResultId
+    const subjectsBySemesterId = allSubjects.reduce((acc, s) => {
+      if (!acc[s.semesterResultId]) acc[s.semesterResultId] = [];
+      acc[s.semesterResultId].push({
+        subjectCode: s.subjectCode,
+        subjectName: s.subjectName,
+        credits: s.credits,
+        letterGrade: s.letterGrade,
+        gradePoint4: s.gradePoint4,
+        gradePoint10: s.gradePoint10,
+      });
+      return acc;
+    }, {});
+
     let yearlyResults = [];
 
     // Lặp qua từng student để tính toán kết quả năm học
@@ -5191,6 +5282,12 @@ const getYearlyStatistics = async (req, res) => {
       try {
         // Lấy tất cả kết quả học kỳ
         const semesterResults = student.semester_results || [];
+
+        // Gắn subjects từ subject_results table vào từng semester result
+        semesterResults.forEach((sr) => {
+          sr.subjects = subjectsBySemesterId[sr.id] || [];
+        });
+
         console.log(
           `Student ${student.fullName}: ${semesterResults.length} semester results`
         );
@@ -5228,6 +5325,13 @@ const getYearlyStatistics = async (req, res) => {
             const subjects = Array.isArray(result.subjects)
               ? result.subjects
               : [];
+
+            // DEBUG LOGGING FOR YEARLY
+            console.log(
+              `\n=== [YEARLY] Processing ${result.semester} ${result.schoolYear} ===`
+            );
+            console.log(`Subjects count: ${subjects.length}`);
+
             const normalizedSubjects = subjects.map((s) => {
               let letter = s.letterGrade;
               if (!letter) {
@@ -5239,6 +5343,17 @@ const getYearlyStatistics = async (req, res) => {
               }
               const gradePoint4 = gradeHelper.letterToGrade4(letter);
               const gradePoint10 = gradeHelper.letterToGrade10(letter);
+
+              // DEBUG: Log failed subjects
+              if (letter === "F" || gradePoint4 === 0) {
+                console.log(`  [YEARLY FAILED] ${s.subjectName}:`, {
+                  originalLetter: s.letterGrade,
+                  normalizedLetter: letter,
+                  gradePoint4,
+                  credits: s.credits,
+                });
+              }
+
               return {
                 ...(s.toObject?.() || s),
                 letterGrade: letter,
@@ -5251,6 +5366,12 @@ const getYearlyStatistics = async (req, res) => {
               gradeHelper.calculateFailedSubjects(normalizedSubjects);
             const debtCredits =
               gradeHelper.calculateDebtCredits(normalizedSubjects);
+
+            // DEBUG: Log calculation
+            console.log(
+              `[YEARLY] Semester ${result.semester}: failedSubjects=${failedSubjects}, debtCredits=${debtCredits}`
+            );
+
             yearlyFailedSubjects += failedSubjects;
             yearlyDebtCredits += debtCredits;
 
@@ -5291,42 +5412,50 @@ const getYearlyStatistics = async (req, res) => {
           );
 
           // Tạo kết quả thống kê năm học
-          const yearlyResult = {
-            id: student.id,
-            studentId: student.id,
-            fullName: student.fullName,
-            studentCode: student.studentId,
-            university: student.university?.universityName || "",
-            className: student.class?.className || "",
-            unit: student.unit || "",
-            positionParty: student.positionParty || "Không",
-            schoolYear: schoolYear,
-            yearlyResultId: existingYearlyResult?.id || null,
-            yearlyGPA: yearlyGPA,
-            yearlyGrade10: yearlyGrade10,
-            cumulativeGPA: cumulativeGPA,
-            cumulativeGrade10: cumulativeGrade10,
-            cumulativeCredit: cumulativeCredits,
-            totalDebt: totalDebt,
-            studentLevel: studentLevel,
-            subjects: allSubjects,
-            totalCredits: totalCredits,
-            partyRating: existingYearlyResult?.partyRating
-              ? {
-                  rating: existingYearlyResult.partyRating,
-                  decisionNumber:
-                    existingYearlyResult.partyRatingDecisionNumber || "",
-                }
-              : null,
-            trainingRating: existingYearlyResult?.trainingRating || null,
-            academicStatus: existingYearlyResult?.academicStatus || null,
-            totalSubjects: existingYearlyResult?.totalSubjects || 0,
-            passedSubjects: existingYearlyResult?.passedSubjects || 0,
-            failedSubjects: yearlyFailedSubjects,
-            debtCredits: yearlyDebtCredits,
-          };
+          // Chỉ thêm vào kết quả nếu có subjects data (đã nhập điểm)
+          if (allSubjects.length > 0) {
+            const yearlyResult = {
+              id: student.id,
+              studentId: student.id,
+              fullName: student.fullName,
+              studentCode: student.studentId,
+              university: student.university?.universityName || "",
+              className: student.class?.className || "",
+              unit: student.unit || "",
+              positionParty: student.positionParty || "Không",
+              schoolYear: schoolYear,
+              yearlyResultId: existingYearlyResult?.id || null,
+              semesterCount: yearResults.length, // Số học kỳ trong năm học
+              yearlyGPA: yearlyGPA,
+              yearlyGrade10: yearlyGrade10,
+              cumulativeGPA: cumulativeGPA,
+              cumulativeGrade10: cumulativeGrade10,
+              cumulativeCredit: cumulativeCredits,
+              totalDebt: totalDebt,
+              studentLevel: studentLevel,
+              subjects: allSubjects,
+              totalCredits: totalCredits,
+              partyRating: existingYearlyResult?.partyRating
+                ? {
+                    rating: existingYearlyResult.partyRating,
+                    decisionNumber:
+                      existingYearlyResult.partyRatingDecisionNumber || "",
+                  }
+                : null,
+              trainingRating: existingYearlyResult?.trainingRating || null,
+              academicStatus: existingYearlyResult?.academicStatus || null,
+              totalSubjects: existingYearlyResult?.totalSubjects || 0,
+              passedSubjects: existingYearlyResult?.passedSubjects || 0,
+              failedSubjects: yearlyFailedSubjects,
+              debtCredits: yearlyDebtCredits,
+            };
 
-          yearlyResults.push(yearlyResult);
+            yearlyResults.push(yearlyResult);
+          } else {
+            console.log(
+              `⚠ Skipping ${student.fullName} - ${schoolYear}: No subjects data`
+            );
+          }
         } else {
           // Nếu không có schoolYear, sử dụng dữ liệu từ yearlyResults có sẵn
           if (student.yearly_results && student.yearly_results.length > 0) {
@@ -5375,40 +5504,44 @@ const getYearlyStatistics = async (req, res) => {
               const cumulativeCredits = lastResult?.cumulativeCredits || 0;
               const totalDebt = lastResult?.totalDebt || 0;
 
-              const result = {
-                id: student.id,
-                studentId: student.id,
-                fullName: student.fullName,
-                studentCode: student.studentId,
-                university: student.university?.universityName || "",
-                className: student.class?.className || "",
-                unit: student.unit || "",
-                positionParty: student.positionParty || "Không",
-                schoolYear: yearlyResult.schoolYear,
-                yearlyResultId: yearlyResult.id,
-                yearlyGPA: yearlyGPA,
-                yearlyGrade10: yearlyGrade10,
-                cumulativeGPA: cumulativeGPA,
-                cumulativeGrade10: cumulativeGrade10,
-                cumulativeCredit: cumulativeCredits,
-                totalDebt: totalDebt,
-                subjects: allSubjects,
-                totalCredits: totalCredits,
-                partyRating: yearlyResult.partyRating
-                  ? {
-                      rating: yearlyResult.partyRating,
-                      decisionNumber:
-                        yearlyResult.partyRatingDecisionNumber || "",
-                    }
-                  : null,
-                trainingRating: yearlyResult.trainingRating || null,
-                academicStatus: yearlyResult.academicStatus || null,
-                totalSubjects: yearlyResult.totalSubjects || 0,
-                passedSubjects: yearlyResult.passedSubjects || 0,
-                failedSubjects: yearlyResult.failedSubjects || 0,
-              };
+              // Chỉ thêm nếu có subjects data
+              if (allSubjects.length > 0) {
+                const result = {
+                  id: student.id,
+                  studentId: student.id,
+                  fullName: student.fullName,
+                  studentCode: student.studentId,
+                  university: student.university?.universityName || "",
+                  className: student.class?.className || "",
+                  unit: student.unit || "",
+                  positionParty: student.positionParty || "Không",
+                  schoolYear: yearlyResult.schoolYear,
+                  yearlyResultId: yearlyResult.id,
+                  semesterCount: yearSemesterResults.length, // Số học kỳ
+                  yearlyGPA: yearlyGPA,
+                  yearlyGrade10: yearlyGrade10,
+                  cumulativeGPA: cumulativeGPA,
+                  cumulativeGrade10: cumulativeGrade10,
+                  cumulativeCredit: cumulativeCredits,
+                  totalDebt: totalDebt,
+                  subjects: allSubjects,
+                  totalCredits: totalCredits,
+                  partyRating: yearlyResult.partyRating
+                    ? {
+                        rating: yearlyResult.partyRating,
+                        decisionNumber:
+                          yearlyResult.partyRatingDecisionNumber || "",
+                      }
+                    : null,
+                  trainingRating: yearlyResult.trainingRating || null,
+                  academicStatus: yearlyResult.academicStatus || null,
+                  totalSubjects: yearlyResult.totalSubjects || 0,
+                  passedSubjects: yearlyResult.passedSubjects || 0,
+                  failedSubjects: yearlyResult.failedSubjects || 0,
+                };
 
-              yearlyResults.push(result);
+                yearlyResults.push(result);
+              }
             });
           } else {
             // Fallback: tạo kết quả cho từng năm học từ semesterResults
@@ -5463,34 +5596,38 @@ const getYearlyStatistics = async (req, res) => {
               const cumulativeCredits = lastResult.cumulativeCredits || 0;
               const totalDebt = lastResult.totalDebt || 0;
 
-              const yearlyResult = {
-                id: student.id,
-                studentId: student.id,
-                fullName: student.fullName,
-                studentCode: student.studentId,
-                university: student.university?.universityName || "",
-                className: student.class?.className || "",
-                unit: student.unit || "",
-                positionParty: student.positionParty || "Không",
-                schoolYear: year,
-                yearlyResultId: null, // Không có yearlyResult
-                yearlyGPA: yearlyGPA,
-                yearlyGrade10: yearlyGrade10,
-                cumulativeGPA: cumulativeGPA,
-                cumulativeGrade10: cumulativeGrade10,
-                cumulativeCredit: cumulativeCredits,
-                totalDebt: totalDebt,
-                subjects: group.allSubjects,
-                totalCredits: group.totalCredits,
-                partyRating: null,
-                trainingRating: null,
-                academicStatus: null,
-                totalSubjects: 0,
-                passedSubjects: 0,
-                failedSubjects: 0,
-              };
+              // Chỉ thêm nếu có subjects data
+              if (group.allSubjects.length > 0) {
+                const yearlyResult = {
+                  id: student.id,
+                  studentId: student.id,
+                  fullName: student.fullName,
+                  studentCode: student.studentId,
+                  university: student.university?.universityName || "",
+                  className: student.class?.className || "",
+                  unit: student.unit || "",
+                  positionParty: student.positionParty || "Không",
+                  schoolYear: year,
+                  yearlyResultId: null, // Không có yearlyResult
+                  semesterCount: group.results.length, // Số học kỳ
+                  yearlyGPA: yearlyGPA,
+                  yearlyGrade10: yearlyGrade10,
+                  cumulativeGPA: cumulativeGPA,
+                  cumulativeGrade10: cumulativeGrade10,
+                  cumulativeCredit: cumulativeCredits,
+                  totalDebt: totalDebt,
+                  subjects: group.allSubjects,
+                  totalCredits: group.totalCredits,
+                  partyRating: null,
+                  trainingRating: null,
+                  academicStatus: null,
+                  totalSubjects: 0,
+                  passedSubjects: 0,
+                  failedSubjects: 0,
+                };
 
-              yearlyResults.push(yearlyResult);
+                yearlyResults.push(yearlyResult);
+              }
             });
           }
         }

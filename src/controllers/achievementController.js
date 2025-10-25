@@ -462,6 +462,35 @@ const updateYearlyAchievementByAdmin = async (req, res) => {
     }
 
     const resp = await buildAchievementResponse(ya.studentId);
+
+    // Tạo thông báo cho sinh viên khi khen thưởng được cập nhật
+    try {
+      const { Notification } = require("../models");
+      const student = await Student.findByPk(ya.studentId);
+
+      if (student) {
+        const achievementTitle = payload.title || ya.title || "Khen thưởng";
+        await Notification.create({
+          studentId: ya.studentId,
+          type: "achievement",
+          title: "Cập nhật khen thưởng",
+          message: `Khen thưởng "${achievementTitle}" năm ${ya.year} của bạn đã được cập nhật.`,
+          data: JSON.stringify({
+            achievementId: ya.id,
+            year: ya.year,
+            studentId: ya.studentId,
+          }),
+          read: false,
+        });
+        console.log(
+          `✅ Created notification for student ${student.fullName} about achievement update`
+        );
+      }
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
+      // Không throw error để không ảnh hưởng đến việc cập nhật khen thưởng
+    }
+
     return res.status(200).json(resp);
   } catch (error) {
     console.error("Error updating achievement:", error);
@@ -589,13 +618,30 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
     .map((a) => a.year)
     .sort((a, b) => a - b);
 
+  // Tìm chuỗi CHÍNH XÁC 3 năm liên tiếp (không quá 3)
   let maxConsecutiveCompetitive = 0;
   let currentConsecutive = 0;
   let consecutiveStartYear = 0;
+  let validThreeYearStreak = null; // Lưu chuỗi 3 năm hợp lệ cuối cùng
+
   for (let i = 0; i < competitiveYears.length; i++) {
     if (i === 0 || competitiveYears[i] === competitiveYears[i - 1] + 1) {
       if (currentConsecutive === 0) consecutiveStartYear = competitiveYears[i];
       currentConsecutive++;
+
+      // Khi đạt 3 năm liên tiếp, lưu lại
+      if (currentConsecutive === 3) {
+        validThreeYearStreak = {
+          startYear: consecutiveStartYear,
+          endYear: competitiveYears[i],
+        };
+      }
+      // Nếu quá 3 năm, reset để tìm chuỗi mới
+      if (currentConsecutive > 3) {
+        currentConsecutive = 1;
+        consecutiveStartYear = competitiveYears[i];
+        validThreeYearStreak = null; // Hủy chuỗi cũ vì đã quá 3 năm
+      }
     } else {
       currentConsecutive = 1;
       consecutiveStartYear = competitiveYears[i];
@@ -604,6 +650,11 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
       maxConsecutiveCompetitive,
       currentConsecutive
     );
+  }
+
+  // Nếu có chuỗi 3 năm hợp lệ, dùng nó
+  if (validThreeYearStreak) {
+    consecutiveStartYear = validThreeYearStreak.startYear;
   }
 
   const currentYear = yearlyAchievements.length
@@ -617,10 +668,37 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
     currentYear >= secondYearOfStreak &&
     (totalTopics > 0 || totalInitiatives > 0);
 
+  // CSTĐ Toàn quân: Cần có NCKH ở năm thứ 3 + NCKH ở 1 trong 2 năm trước đó
+  let hasTopicInFirstYear = false;
+  let hasTopicInSecondYear = false;
+  let hasTopicInThirdYear = false;
+
+  if (maxConsecutiveCompetitive >= 3) {
+    yearlyAchievements.forEach((y) => {
+      // Kiểm tra cả đề tài (topics) và sáng kiến (initiatives) đã duyệt
+      const approvedCount =
+        (y.scientific.topics || []).filter((t) => t.status === "approved")
+          .length +
+        (y.scientific.initiatives || []).filter((i) => i.status === "approved")
+          .length;
+
+      if (y.year === consecutiveStartYear && approvedCount > 0) {
+        hasTopicInFirstYear = true;
+      }
+      if (y.year === secondYearOfStreak && approvedCount > 0) {
+        hasTopicInSecondYear = true;
+      }
+      if (y.year === thirdYearOfStreak && approvedCount > 0) {
+        hasTopicInThirdYear = true;
+      }
+    });
+  }
+
   const eligibleForNationalReward =
     maxConsecutiveCompetitive >= 3 &&
     currentYear >= thirdYearOfStreak &&
-    (totalTopics > 0 || totalInitiatives > 0);
+    hasTopicInThirdYear &&
+    (hasTopicInFirstYear || hasTopicInSecondYear);
 
   const nextYear = yearlyAchievements.length
     ? Math.max(...yearlyAchievements.map((a) => a.year)) + 1
@@ -658,6 +736,20 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
       canContinueStreak:
         nextYear === lastCompetitiveYear + 1 &&
         maxConsecutiveCompetitive % 3 !== 0,
+      // Thông tin chi tiết cho CSTĐ Toàn quân
+      nationalRewardDetails: {
+        hasTopicInFirstYear,
+        hasTopicInSecondYear,
+        hasTopicInThirdYear,
+        firstYearOfStreak: consecutiveStartYear,
+        secondYearOfStreak,
+        thirdYearOfStreak,
+      },
+      // Năm được phép chọn bằng khen
+      eligibleYears: {
+        ministryRewardYear: secondYearOfStreak, // Chỉ năm thứ 2
+        nationalRewardYear: thirdYearOfStreak,  // Chỉ năm thứ 3
+      },
     },
   };
 };
@@ -754,36 +846,93 @@ const buildRecommendationsFromResponse = (resp) => {
     achievement.eligibleForMinistryReward &&
     !achievement.eligibleForNationalReward
   ) {
-    suggestions.push("Đã đủ điều kiện nhận bằng khen Bộ Quốc Phòng");
-    if (achievement.nextYearRecommendations.yearsToNationalReward === 1) {
+    // Không push "Đã đủ điều kiện BK BQP" nếu đã có BK BQP
+    if (!hasMinistryReward) {
+      suggestions.push("Đã đủ điều kiện nhận bằng khen Bộ Quốc Phòng");
+    }
+    // Gợi ý cho CSTĐ Toàn quân sẽ được xử lý ở phần dưới
+  }
+  // Kiểm tra điều kiện CSTĐ Toàn quân với logic chi tiết
+  if (
+    achievement.nextYearRecommendations.consecutiveCompetitiveYears >= 3 &&
+    !achievement.eligibleForNationalReward
+  ) {
+    const details =
+      achievement.nextYearRecommendations.nationalRewardDetails || {};
+    const missingRequirements = [];
+
+    // Kiểm tra NCKH ở năm thứ 3
+    if (!details.hasTopicInThirdYear) {
+      missingRequirements.push(
+        "1 đề tài/sáng kiến ở năm thứ 3 (" + details.thirdYearOfStreak + ")"
+      );
+    }
+
+    // Kiểm tra NCKH ở 1 trong 2 năm trước
+    if (!details.hasTopicInFirstYear && !details.hasTopicInSecondYear) {
+      missingRequirements.push(
+        "1 đề tài/sáng kiến ở năm " +
+          details.firstYearOfStreak +
+          " hoặc năm " +
+          details.secondYearOfStreak
+      );
+    }
+
+    if (missingRequirements.length > 0) {
       suggestions.push(
-        "Cần thêm 1 năm chiến sĩ thi đua để đủ điều kiện nhận CSTĐ Toàn Quân"
+        "Đã có 3 năm chiến sĩ thi đua liên tiếp - Cần thêm: " +
+          missingRequirements.join(" và ")
       );
     }
   }
-  if (
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears > 0 &&
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears % 3 === 0 &&
-    achievement.totalScientificTopics === 0 &&
-    achievement.totalScientificInitiatives === 0 &&
-    !achievement.eligibleForNationalReward
-  ) {
-    suggestions.push(
-      "Cần có đề tài hoặc sáng kiến khoa học để đủ điều kiện nhận CSTĐ Toàn Quân"
-    );
-  }
+
   if (achievement.eligibleForNationalReward) {
     suggestions.push("Đã đủ điều kiện nhận CSTĐ Toàn Quân");
   }
 
   if (hasNationalReward) {
     suggestions.length = 0;
-    suggestions.push("Đã có CSTĐ Toàn Quân - Không cần đề xuất thêm");
+    suggestions.push("Đã nhận CSTĐ Toàn Quân");
   } else if (hasMinistryReward) {
-    suggestions.length = 0;
-    suggestions.push(
-      "Đã có bằng khen Bộ Quốc Phòng - Cần thêm 1 năm chiến sĩ thi đua để đủ điều kiện nhận CSTĐ Toàn Quân"
-    );
+    // Nếu đã có BK BQP, kiểm tra xem đã đủ 3 năm chưa
+    if (achievement.nextYearRecommendations.consecutiveCompetitiveYears >= 3) {
+      // Đã có 3 năm, chỉ cần kiểm tra NCKH
+      const details =
+        achievement.nextYearRecommendations.nationalRewardDetails || {};
+      const missingRequirements = [];
+
+      if (!details.hasTopicInThirdYear) {
+        missingRequirements.push(
+          "1 đề tài/sáng kiến ở năm thứ 3 (" + details.thirdYearOfStreak + ")"
+        );
+      }
+
+      if (!details.hasTopicInFirstYear && !details.hasTopicInSecondYear) {
+        missingRequirements.push(
+          "1 đề tài/sáng kiến ở năm " +
+            details.firstYearOfStreak +
+            " hoặc năm " +
+            details.secondYearOfStreak
+        );
+      }
+
+      if (missingRequirements.length > 0) {
+        suggestions.length = 0;
+        suggestions.push(
+          "Đã có bằng khen Bộ Quốc Phòng - Cần thêm: " +
+            missingRequirements.join(" và ") +
+            " để đủ điều kiện nhận CSTĐ Toàn Quân"
+        );
+      } else {
+        suggestions.length = 0;
+        suggestions.push("Đã đủ điều kiện nhận CSTĐ Toàn Quân");
+      }
+    } else {
+      suggestions.length = 0;
+      suggestions.push(
+        "Đã có bằng khen Bộ Quốc Phòng - Cần thêm 1 năm chiến sĩ thi đua và 1 đề tài/sáng kiến khoa học để đủ điều kiện nhận CSTĐ Toàn Quân"
+      );
+    }
   }
 
   return { ...recommendations, suggestions };
