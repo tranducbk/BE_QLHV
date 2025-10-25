@@ -9,7 +9,24 @@ const { syncModels } = require("./services/sequelizeSync");
 const { swaggerUi, specs } = require("./swagger");
 const app = express();
 
-app.use(cors());
+// Cấu hình CORS chi tiết để cho phép Frontend truy cập
+const corsOptions = {
+  origin: [
+    "https://qlhv.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3001",
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "token", "x-access-token"],
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options("*", cors(corsOptions));
+
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
