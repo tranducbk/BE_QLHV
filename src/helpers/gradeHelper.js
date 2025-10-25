@@ -315,10 +315,15 @@ const updateCumulativeGrades = (allSemesterResults) => {
     semester.debtCredits = calculateDebtCredits(subjects);
     semester.failedSubjects = calculateFailedSubjects(subjects);
 
-    // Tích lũy
+    // Tích lũy - TÍNH ĐÚNG: Cộng dồn từ TỪNG MÔN HỌC, không phải từ GPA học kỳ
+    subjects.forEach((subject) => {
+      const credits = subject.credits || 0;
+      const gradePoint4 = subject.gradePoint4 || 0;
+      const gradePoint10 = subject.gradePoint10 || 0;
+      accGradePoints4 += gradePoint4 * credits;
+      accGradePoints10 += gradePoint10 * credits;
+    });
     accCredits += semesterCredits;
-    accGradePoints4 += avg4 * semesterCredits;
-    accGradePoints10 += avg10 * semesterCredits;
 
     semester.cumulativeCredits = accCredits;
     semester.cumulativeGrade4 =

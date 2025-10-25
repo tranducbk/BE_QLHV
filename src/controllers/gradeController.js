@@ -779,44 +779,102 @@ const recalculateAllYearlyResultsSql = async (studentId) => {
     return acc;
   }, {});
 
-  const semestersByYear = {};
-  semesters.forEach((r) => {
-    const subjects = subjMap[r.id] || [];
-    const totalCredits =
-      r.totalCredits || gradeHelper.calculateTotalCredits(subjects);
-    const averageGrade4 =
-      r.averageGrade4 || gradeHelper.calculateAverageGrade4(subjects);
-    const averageGrade10 =
-      r.averageGrade10 || gradeHelper.calculateAverageGrade10(subjects);
-    if (!semestersByYear[r.schoolYear]) semestersByYear[r.schoolYear] = [];
-    semestersByYear[r.schoolYear].push({
-      id: r.id,
-      semester: r.semester,
-      schoolYear: r.schoolYear,
-      subjects,
-      totalCredits,
-      averageGrade4,
-      averageGrade10,
+  // Chuẩn bị dữ liệu semester với subjects
+  const semestersWithSubjects = semesters.map((r) => ({
+    id: r.id,
+    semester: r.semester,
+    schoolYear: r.schoolYear,
+    subjects: subjMap[r.id] || [],
+    totalCredits:
+      r.totalCredits || gradeHelper.calculateTotalCredits(subjMap[r.id] || []),
+    averageGrade4:
+      r.averageGrade4 ||
+      gradeHelper.calculateAverageGrade4(subjMap[r.id] || []),
+    averageGrade10:
+      r.averageGrade10 ||
+      gradeHelper.calculateAverageGrade10(subjMap[r.id] || []),
+  }));
+
+  // Tính CPA tích lũy cho TẤT CẢ các học kỳ theo thứ tự thời gian
+  let cumulativeTotalCredits = 0;
+  let cumulativeTotalGradePoints4 = 0;
+  let cumulativeTotalGradePoints10 = 0;
+
+  for (const semesterData of semestersWithSubjects) {
+    const subjects = semesterData.subjects || [];
+
+    // Tính CPA tích lũy từ TỪNG MÔN HỌC (không phải từ GPA học kỳ)
+    subjects.forEach((subject) => {
+      const credits = subject.credits || 0;
+      const gradePoint4 = subject.gradePoint4 || 0;
+      const gradePoint10 = subject.gradePoint10 || 0;
+
+      cumulativeTotalCredits += credits;
+      cumulativeTotalGradePoints4 += gradePoint4 * credits;
+      cumulativeTotalGradePoints10 += gradePoint10 * credits;
     });
+
+    const cumulativeGrade4 =
+      cumulativeTotalCredits > 0
+        ? parseFloat(
+            (cumulativeTotalGradePoints4 / cumulativeTotalCredits).toFixed(2)
+          )
+        : 0.0;
+    const cumulativeGrade10 =
+      cumulativeTotalCredits > 0
+        ? parseFloat(
+            (cumulativeTotalGradePoints10 / cumulativeTotalCredits).toFixed(2)
+          )
+        : 0.0;
+    const studentLevel = gradeHelper.calculateStudentLevel(
+      cumulativeTotalCredits
+    );
+
+    // Cập nhật CPA vào từng SemesterResult
+    await SemesterResult.update(
+      {
+        cumulativeCredits: cumulativeTotalCredits,
+        cumulativeGrade4: cumulativeGrade4,
+        cumulativeGrade10: cumulativeGrade10,
+        studentLevel: studentLevel,
+      },
+      { where: { id: semesterData.id } }
+    );
+  }
+
+  // Nhóm theo năm học và tính YearlyResult
+  const semestersByYear = {};
+  semestersWithSubjects.forEach((r) => {
+    if (!semestersByYear[r.schoolYear]) semestersByYear[r.schoolYear] = [];
+    semestersByYear[r.schoolYear].push(r);
   });
 
   // Tính và upsert YearlyResult theo từng năm
-  const validYears = Object.keys(semestersByYear);
+  const validYears = Object.keys(semestersByYear).sort();
+  let yearCumulativeCredits = 0;
+  let yearCumulativeGradePoints4 = 0;
+  let yearCumulativeGradePoints10 = 0;
+
   for (const schoolYear of validYears) {
     const yearSemesters = semestersByYear[schoolYear];
     const semesterIds = yearSemesters.map((s) => s.id);
-    const yearlyTotalCredits = yearSemesters.reduce(
-      (sum, s) => sum + (s.totalCredits || 0),
-      0
-    );
-    const yearlyTotalGradePoints4 = yearSemesters.reduce(
-      (sum, s) => sum + (s.averageGrade4 || 0) * (s.totalCredits || 0),
-      0
-    );
-    const yearlyTotalGradePoints10 = yearSemesters.reduce(
-      (sum, s) => sum + (s.averageGrade10 || 0) * (s.totalCredits || 0),
-      0
-    );
+
+    // Tính GPA năm học từ TỪNG MÔN HỌC của năm đó
+    const allSubjects = yearSemesters.flatMap((r) => r.subjects || []);
+    let yearlyTotalCredits = 0;
+    let yearlyTotalGradePoints4 = 0;
+    let yearlyTotalGradePoints10 = 0;
+
+    allSubjects.forEach((subject) => {
+      const credits = subject.credits || 0;
+      const gradePoint4 = subject.gradePoint4 || 0;
+      const gradePoint10 = subject.gradePoint10 || 0;
+
+      yearlyTotalCredits += credits;
+      yearlyTotalGradePoints4 += gradePoint4 * credits;
+      yearlyTotalGradePoints10 += gradePoint10 * credits;
+    });
+
     const yearlyGPA =
       yearlyTotalCredits > 0 ? yearlyTotalGradePoints4 / yearlyTotalCredits : 0;
     const yearlyGrade10 =
@@ -824,7 +882,20 @@ const recalculateAllYearlyResultsSql = async (studentId) => {
         ? yearlyTotalGradePoints10 / yearlyTotalCredits
         : 0;
 
-    const allSubjects = yearSemesters.flatMap((r) => r.subjects || []);
+    // Cập nhật CPA tích lũy cho năm học
+    yearCumulativeCredits += yearlyTotalCredits;
+    yearCumulativeGradePoints4 += yearlyTotalGradePoints4;
+    yearCumulativeGradePoints10 += yearlyTotalGradePoints10;
+
+    const cumulativeGPA =
+      yearCumulativeCredits > 0
+        ? yearCumulativeGradePoints4 / yearCumulativeCredits
+        : 0;
+    const cumulativeGrade10 =
+      yearCumulativeCredits > 0
+        ? yearCumulativeGradePoints10 / yearCumulativeCredits
+        : 0;
+
     const totalSubjects = allSubjects.length;
     const passedSubjects = allSubjects.filter(
       (s) => s.letterGrade && s.letterGrade !== "F"
@@ -843,6 +914,10 @@ const recalculateAllYearlyResultsSql = async (studentId) => {
     else if (yearlyGrade10 >= 4.0) academicStatus = "Yếu";
     else academicStatus = "Kém";
 
+    const studentLevel = gradeHelper.calculateStudentLevel(
+      yearCumulativeCredits
+    );
+
     const [yr, created] = await YearlyResult.findOrCreate({
       where: { studentId, schoolYear },
       defaults: {
@@ -850,16 +925,16 @@ const recalculateAllYearlyResultsSql = async (studentId) => {
         schoolYear,
         averageGrade4: parseFloat(yearlyGPA.toFixed(2)),
         averageGrade10: parseFloat(yearlyGrade10.toFixed(2)),
-        cumulativeGrade4: 0,
-        cumulativeGrade10: 0,
-        cumulativeCredits: 0,
+        cumulativeGrade4: parseFloat(cumulativeGPA.toFixed(2)),
+        cumulativeGrade10: parseFloat(cumulativeGrade10.toFixed(2)),
+        cumulativeCredits: yearCumulativeCredits,
         totalCredits: yearlyTotalCredits,
         totalSubjects,
         passedSubjects,
         failedSubjects,
         debtCredits: yearDebtCredits,
         academicStatus,
-        studentLevel: yearSemesters.length,
+        studentLevel: studentLevel,
         semesterIds,
       },
     });
@@ -867,13 +942,16 @@ const recalculateAllYearlyResultsSql = async (studentId) => {
       await yr.update({
         averageGrade4: parseFloat(yearlyGPA.toFixed(2)),
         averageGrade10: parseFloat(yearlyGrade10.toFixed(2)),
+        cumulativeGrade4: parseFloat(cumulativeGPA.toFixed(2)),
+        cumulativeGrade10: parseFloat(cumulativeGrade10.toFixed(2)),
+        cumulativeCredits: yearCumulativeCredits,
         totalCredits: yearlyTotalCredits,
         totalSubjects,
         passedSubjects,
         failedSubjects,
         debtCredits: yearDebtCredits,
         academicStatus,
-        studentLevel: yearSemesters.length,
+        studentLevel: studentLevel,
         semesterIds,
       });
     }
@@ -1185,37 +1263,34 @@ const recalculateAllYearlyResults = async (student) => {
   for (const schoolYear of sortedYears) {
     const yearSemesters = semestersByYear[schoolYear];
 
-    // Tính GPA năm học
+    // Tính GPA năm học từ TỪNG MÔN HỌC (không phải từ GPA học kỳ)
     let yearlyTotalCredits = 0;
     let yearlyTotalGradePoints4 = 0;
     let yearlyTotalGradePoints10 = 0;
     const semesterIds = [];
+    const allSubjects = [];
 
     yearSemesters.forEach((semester) => {
-      const credits = semester.totalCredits || 0;
-      const grade4 = semester.averageGrade4 || 0;
-      const grade10 = semester.averageGrade10 || 0;
-
-      yearlyTotalCredits += credits;
-      yearlyTotalGradePoints4 += grade4 * credits;
-      yearlyTotalGradePoints10 += grade10 * credits;
       semesterIds.push(semester.id);
 
       // Cập nhật nợ cho từng học kỳ trong quá trình duyệt
       const subjects = semester.subjects || [];
       semester.debtCredits = gradeHelper.calculateDebtCredits(subjects);
       semester.failedSubjects = gradeHelper.calculateFailedSubjects(subjects);
-      try {
-        const debugSubjects = subjects.map((s) => ({
-          subjectCode: s.subjectCode,
-          letterGrade: s.letterGrade,
-          credits: s.credits,
-          gradePoint4: s.gradePoint4,
-          gradePoint10: s.gradePoint10,
-        }));
-      } catch (e) {
-        console.error("Error calculating debt credits:", e);
-      }
+
+      // Thu thập tất cả môn học của năm
+      allSubjects.push(...subjects);
+    });
+
+    // Tính GPA năm học từ TỪNG MÔN HỌC
+    allSubjects.forEach((subject) => {
+      const credits = subject.credits || 0;
+      const gradePoint4 = subject.gradePoint4 || 0;
+      const gradePoint10 = subject.gradePoint10 || 0;
+
+      yearlyTotalCredits += credits;
+      yearlyTotalGradePoints4 += gradePoint4 * credits;
+      yearlyTotalGradePoints10 += gradePoint10 * credits;
     });
 
     // Cập nhật CPA tích lũy cho năm học này
@@ -1240,10 +1315,7 @@ const recalculateAllYearlyResults = async (student) => {
         ? (cumulativeTotalGradePoints10 / cumulativeTotalCredits).toFixed(2)
         : "0.00";
 
-    // Tính thống kê môn học cho năm (chỉ tính theo học kỳ trong năm đó)
-    const allSubjects = yearSemesters.flatMap(
-      (result) => result.subjects || []
-    );
+    // Tính thống kê môn học cho năm (đã tính ở trên trong biến allSubjects)
     const totalSubjects = allSubjects.length;
     const passedSubjects = allSubjects.filter(
       (subject) => subject.letterGrade && subject.letterGrade !== "F"
