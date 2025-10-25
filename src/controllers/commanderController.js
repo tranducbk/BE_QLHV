@@ -2306,26 +2306,29 @@ const getExcelCutRice = async (req, res) => {
       }
 
       addedRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cell.font = { name: "Times New Roman", size: 13 };
-        // Căn giữa cho tất cả các ô dữ liệu
-        cell.alignment = {
-          vertical: "middle",
-          horizontal: "center",
-        };
+        // Chỉ style cho 23 cột đầu tiên (A-W: Đơn vị, Họ tên, 7 ngày x 3 bữa)
+        if (colNumber <= 23) {
+          cell.font = { name: "Times New Roman", size: 13 };
+          // Căn giữa cho tất cả các ô dữ liệu
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: "center",
+          };
 
-        // Styling đặc biệt cho các ô "Chưa có dữ liệu"
-        if (isNoData && colNumber >= 3) {
-          cell.font = {
-            name: "Times New Roman",
-            size: 13,
-            italic: true,
-            color: { argb: "FF666666" },
-          };
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FFF0F0F0" },
-          };
+          // Styling đặc biệt cho các ô "Chưa có dữ liệu"
+          if (isNoData && colNumber >= 3) {
+            cell.font = {
+              name: "Times New Roman",
+              size: 13,
+              italic: true,
+              color: { argb: "FF666666" },
+            };
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFF0F0F0" },
+            };
+          }
         }
       });
     });
@@ -2343,7 +2346,7 @@ const getExcelCutRice = async (req, res) => {
     }
 
     // Định nghĩa border cho tất cả các ô trong bảng
-    const totalColumns = 25; // Số cột từ 'Đơn vị' tới 'Chủ nhật' (tăng 1 do thêm cột đơn vị)
+    const totalColumns = 23; // Số cột: Đơn vị (1) + Họ tên (1) + 7 ngày x 3 bữa (21) = 23 cột (A-W)
     const totalRows = cutRices.length + 11; // Tổng số hàng bao gồm header và dữ liệu
 
     for (let i = 10; i <= totalRows; i++) {
@@ -3819,12 +3822,8 @@ const getAllStudentsGrades = async (req, res) => {
     const { semester, schoolYear, page = 1, pageSize = 10 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
 
-    console.log("=== getAllStudentsGrades ===");
-    console.log("Query params:", { semester, schoolYear, page, pageSize });
-
     // Kiểm tra xem có semester results nào trong DB không
     const totalSemesterResults = await SemesterResult.count();
-    console.log(`Total SemesterResults in DB: ${totalSemesterResults}`);
 
     const students = await Student.findAll({
       include: [
@@ -3843,24 +3842,11 @@ const getAllStudentsGrades = async (req, res) => {
       limit: parseInt(pageSize),
     });
 
-    console.log(`Found ${students.length} students`);
-
-    // Log raw data để xem structure
-    if (students.length > 0) {
-      console.log(
-        "First student raw data:",
-        JSON.stringify(students[0].toJSON(), null, 2)
-      );
-    }
-
     let allLearningResults = [];
 
     for (const student of students) {
       try {
         const semesterResults = student.semester_results || [];
-        console.log(
-          `Student ${student.id} (${student.fullName}): ${semesterResults.length} semester results`
-        );
         if (semesterResults.length > 0) {
           semesterResults.map((r) => ({
             semester: r.semester,
@@ -5180,9 +5166,6 @@ const getYearlyStatistics = async (req, res) => {
   try {
     const { schoolYear } = req.query;
 
-    console.log("=== getYearlyStatistics ===");
-    console.log("Query params:", { schoolYear });
-
     // Lấy tất cả students với thông tin đầy đủ
     const students = await Student.findAll({
       include: [
@@ -5515,9 +5498,6 @@ const getYearlyStatistics = async (req, res) => {
         console.log(`Error processing student ${student.id}:`, error);
       }
     }
-
-    console.log(`Total yearly results: ${yearlyResults.length}`);
-    console.log("=== END getYearlyStatistics ===\n");
 
     return res.status(200).json(yearlyResults);
   } catch (error) {
@@ -6736,10 +6716,35 @@ const getExcelPoliticalManagement = async (req, res) => {
         { model: Organization, attributes: ["organizationName"] },
         { model: EducationLevel, attributes: ["levelName"] },
         { model: ClassModel, attributes: ["className"] },
-        { model: Achievement },
+        {
+          model: YearlyAchievement,
+          include: [
+            { model: ScientificInitiative },
+            { model: ScientificTopic },
+          ],
+        },
+        { model: YearlyResult },
       ],
       order: [["studentId", "ASC"]],
     });
+
+    console.log(
+      "📊 [Quản lý chính trị] Query result:",
+      students.length,
+      "students"
+    );
+    if (students.length > 0) {
+      console.log("📊 [Quản lý chính trị] First student structure:", {
+        id: students[0].id,
+        fullName: students[0].fullName,
+        hasYearlyResults: !!students[0].yearly_results,
+        yearlyResultsCount: students[0].yearly_results?.length || 0,
+        hasYearlyAchievements: !!students[0].yearly_achievements,
+        yearlyAchievementsCount: students[0].yearly_achievements?.length || 0,
+        hasFamilyMembers: !!students[0].familyMembers,
+        hasForeignRelations: !!students[0].foreignRelations,
+      });
+    }
 
     if (students.length === 0) {
       return res.status(404).json({
@@ -6871,23 +6876,37 @@ const getExcelPoliticalManagement = async (req, res) => {
       return a.fullName.localeCompare(b.fullName, "vi");
     });
 
+    console.log("📊 [Quản lý chính trị] Tổng số sinh viên:", students.length);
+    console.log(
+      "📊 [Quản lý chính trị] Sample student:",
+      JSON.stringify(students[0], null, 2)
+    );
+
     students.forEach((student, index) => {
+      console.log(`📊 [Quản lý chính trị] Student ${index + 1}:`, {
+        id: student.id,
+        fullName: student.fullName,
+        hasYearlyResults: !!student.yearly_results,
+        yearlyResultsType: typeof student.yearly_results,
+        yearlyResultsLength: student.yearly_results?.length,
+      });
+
       // Tìm yearlyResult cho năm học cụ thể
-      let yearlyResult = student.yearly_results.find(
+      let yearlyResult = student.yearly_results?.find(
         (yr) => yr.schoolYear === schoolYear
       );
 
       // Nếu không tìm thấy, lấy yearlyResult gần nhất
-      if (!yearlyResult && student.yearly_results.length > 0) {
+      if (!yearlyResult && student.yearly_results?.length > 0) {
         yearlyResult = student.yearly_results.sort((a, b) =>
           b.schoolYear.localeCompare(a.schoolYear)
         )[0];
       }
 
-      const achievement = student.achievement;
+      const yearlyAchievements = student.yearly_achievements || []; // Lấy mảng yearly_achievements
 
       const familyInfo = student.familyMembers
-        .map(
+        ?.map(
           (member) =>
             `${member.relationship}: ${member.fullName}, ${new Date(
               member.birthday
@@ -6896,7 +6915,7 @@ const getExcelPoliticalManagement = async (req, res) => {
         .join("; ");
 
       const foreignInfo = student.foreignRelations
-        .map(
+        ?.map(
           (relation) =>
             `${relation.relationship}: ${relation.fullName}, ${relation.country}. ${relation.reason}, Quốc tịch: ${relation.nationality}`
         )
@@ -6916,7 +6935,7 @@ const getExcelPoliticalManagement = async (req, res) => {
         ? new Date(student.fullPartyMember).toLocaleDateString("vi-VN")
         : "Chưa có dữ liệu";
 
-      const partyRating = yearlyResult?.partyRating?.rating || "";
+      const partyRating = yearlyResult?.partyRating || ""; // partyRating là string trực tiếp
       const trainingRating = yearlyResult?.trainingRating || "Chưa đánh giá";
 
       let cstt = "",
@@ -6924,28 +6943,31 @@ const getExcelPoliticalManagement = async (req, res) => {
         bkBqp = "",
         cstdTq = "";
 
-      if (achievement && achievement.yearlyAchievements) {
+      // Xử lý khen thưởng từ mảng yearly_achievements
+      if (yearlyAchievements && yearlyAchievements.length > 0) {
         const targetYear = parseInt(schoolYear.split("-")[0]);
-        let currentYearAchievement = achievement.yearlyAchievements.find(
-          (ya) => ya.year === targetYear
-        );
 
-        // Nếu không tìm thấy achievement cho năm cụ thể, lấy năm gần nhất
-        if (
-          !currentYearAchievement &&
-          achievement.yearlyAchievements.length > 0
-        ) {
-          currentYearAchievement = achievement.yearlyAchievements.sort(
-            (a, b) => b.year - a.year
-          )[0];
-        }
+        // Lọc yearly_achievements theo năm
+        const currentYearAchievements = yearlyAchievements.filter((ya) => {
+          return ya.year === targetYear;
+        });
 
-        if (currentYearAchievement) {
-          if (currentYearAchievement.title === "Chiến sĩ tiên tiến") cstt = "X";
-          if (currentYearAchievement.title === "Chiến sĩ thi đua") cstd = "X";
-          if (currentYearAchievement.hasMinistryReward) bkBqp = "X";
-          if (currentYearAchievement.hasNationalReward) cstdTq = "X";
-        }
+        // Nếu không có achievement cho năm cụ thể, lấy tất cả
+        const relevantAchievements =
+          currentYearAchievements.length > 0
+            ? currentYearAchievements
+            : yearlyAchievements;
+
+        // Kiểm tra các loại khen thưởng
+        relevantAchievements.forEach((ya) => {
+          // Kiểm tra danh hiệu
+          if (ya.title === "Chiến sĩ tiên tiến") cstt = "X";
+          if (ya.title === "Chiến sĩ thi đua") cstd = "X";
+
+          // Kiểm tra bằng khen
+          if (ya.hasMinistryReward) bkBqp = "X";
+          if (ya.hasNationalReward) cstdTq = "X";
+        });
       }
 
       // Tạo thông tin cá nhân với xuống dòng (có fallback "Chưa có dữ liệu")
@@ -7136,7 +7158,7 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
         },
       ],
       order: [
-        ["unit", "ASC"],
+        [{ model: Student }, "unit", "ASC"],
         [{ model: Student }, "fullName", "ASC"],
       ],
     });
@@ -7145,10 +7167,10 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Thời khóa biểu");
 
-    // 1) Tiêu đề chính - đưa lên hàng 1, hàng 2 trống
+    // 1) Tiêu đề chính - đưa lên hàng 1, hàng 2 trống (bỏ năm học)
     worksheet.mergeCells("A1:J1");
     const titleCell = worksheet.getCell("A1");
-    titleCell.value = "Thời khóa biểu năm học 2024-2025";
+    titleCell.value = "THỜI KHÓA BIỂU";
     titleCell.font = { name: "Times New Roman", size: 14, bold: true };
     titleCell.alignment = { horizontal: "center", vertical: "middle" };
 
@@ -7238,18 +7260,18 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
 
     // Xử lý dữ liệu lịch học
     timeTableData.forEach((item) => {
-      if (!item || !item.studentId || !item.studentId.id) {
+      if (!item || !item.student) {
         return; // Bỏ qua bản ghi lịch học không có student hợp lệ
       }
-      const key = String(item.studentId.id);
+      const key = String(item.studentId); // Dùng studentId từ time_tables
       if (!studentsMap.has(key)) {
         studentsMap.set(key, {
           studentId: key,
-          fullName: item.studentId.fullName,
-          unit: item.studentId.unit,
-          university: item.studentId.university,
-          organization: item.studentId.organization,
-          educationLevel: item.studentId.educationLevel,
+          fullName: item.student.fullName,
+          unit: item.student.unit,
+          university: item.student.university,
+          organization: item.student.organization,
+          educationLevel: item.student.education_level,
           schedules: [],
           cutRice: null,
         });
@@ -7263,8 +7285,8 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
           studentsMap.get(key).schedules.push({
             ...plainSchedule,
             studentId: key,
-            fullName: item.studentId.fullName,
-            unit: item.studentId.unit,
+            fullName: item.student.fullName,
+            unit: item.student.unit,
           });
         });
       }
@@ -7297,15 +7319,12 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
       await getAllCutRice(mockReq, mockRes);
 
       // Gán dữ liệu cắt cơm cho sinh viên trong studentsMap
-      let assignedCount = 0;
       cutRices.forEach((cutRice) => {
         if (!cutRice || !cutRice.studentId) return;
         const sid = String(cutRice.studentId);
 
         if (studentsMap.has(sid)) {
           studentsMap.get(sid).cutRice = cutRice;
-          assignedCount++;
-        } else {
         }
       });
     } catch (error) {}

@@ -18,6 +18,8 @@ const {
   YearlyResult,
   ScientificInitiative,
   ScientificTopic,
+  Achievement,
+  AchievementProfile,
 } = require("../models");
 const { Op } = require("sequelize");
 const limit = 11;
@@ -491,9 +493,9 @@ const createAdminUser = async (req, res) => {
       // Tạo Commander cho SUPER_ADMIN và ADMIN
       const newCommander = await Commander.create({
         id: uuidv4(),
-        commanderId: "",
+        commanderId: req.body.commanderId || uuidv4(), // Dùng UUID nếu không có commanderId
         fullName: req.body.fullName || req.body.username, // Dùng username nếu không có fullName
-        unit: req.body.unit || "Chưa phân công", // Giá trị mặc định
+        unit: req.body.unit || "Chưa có đơn vị", // Giá trị mặc định
         birthday: req.body.birthday || null,
         avatar:
           req.body.avatar ||
@@ -509,11 +511,14 @@ const createAdminUser = async (req, res) => {
       profile = newCommander;
     } else {
       // Tạo Student cho USER
+      const currentYear = new Date().getFullYear();
+      const defaultEnlistmentDate = new Date(currentYear, 9, 1); // 01/10/năm hiện tại (tháng 9 vì index từ 0)
+
       const newStudent = await Student.create({
         id: uuidv4(),
-        studentId: "",
+        studentId: req.body.studentId || uuidv4(), // Dùng UUID nếu không có studentId
         fullName: req.body.fullName || req.body.username, // Dùng username nếu không có fullName
-        unit: req.body.unit || "Chưa phân công", // Giá trị mặc định
+        unit: req.body.unit || "Chưa có đơn vị", // Giá trị mặc định
         birthday: req.body.birthday || null,
         avatar:
           req.body.avatar ||
@@ -526,6 +531,8 @@ const createAdminUser = async (req, res) => {
         hometown: "",
         placeOfBirth: "",
         currentAddress: "",
+        enrollment: req.body.enrollment || currentYear, // Mặc định: năm hiện tại
+        dateOfEnlistment: req.body.dateOfEnlistment || defaultEnlistmentDate, // Mặc định: 01/10/năm hiện tại
       });
       profileId = newStudent.id;
       profile = newStudent;
@@ -705,6 +712,14 @@ const deleteAdminUser = async (req, res) => {
       const studentId = user.studentId;
 
       // Xóa các bảng liên quan đến student
+
+      // Lấy tất cả yearlyAchievementId của student để xóa scientific_initiatives
+      const yearlyAchievements = await YearlyAchievement.findAll({
+        where: { studentId },
+        attributes: ["id"],
+      });
+      const yearlyAchievementIds = yearlyAchievements.map((ya) => ya.id);
+
       await Promise.all([
         // Xóa kết quả học tập
         SemesterResult.destroy({ where: { studentId } }),
@@ -716,14 +731,26 @@ const deleteAdminUser = async (req, res) => {
         Notification.destroy({ where: { studentId } }),
         // Xóa cắt cơm
         CutRice.destroy({ where: { studentId } }),
-        // Xóa thành tích hàng năm
-        YearlyAchievement.destroy({ where: { studentId } }),
+        // Xóa thành tích
+        Achievement.destroy({ where: { studentId } }),
+        // Xóa hồ sơ thành tích
+        AchievementProfile.destroy({ where: { studentId } }),
+        // Xóa sáng kiến khoa học (qua yearlyAchievementId)
+        yearlyAchievementIds.length > 0
+          ? ScientificInitiative.destroy({
+              where: { yearlyAchievementId: yearlyAchievementIds },
+            })
+          : Promise.resolve(),
+        // Xóa đề tài khoa học (qua yearlyAchievementId)
+        yearlyAchievementIds.length > 0
+          ? ScientificTopic.destroy({
+              where: { yearlyAchievementId: yearlyAchievementIds },
+            })
+          : Promise.resolve(),
         // Xóa kết quả hàng năm
         YearlyResult.destroy({ where: { studentId } }),
-        // Xóa sáng kiến khoa học
-        ScientificInitiative.destroy({ where: { studentId } }),
-        // Xóa đề tài khoa học
-        ScientificTopic.destroy({ where: { studentId } }),
+        // Xóa thành tích hàng năm (sau khi xóa scientific_initiatives)
+        YearlyAchievement.destroy({ where: { studentId } }),
       ]);
 
       // Cuối cùng xóa Student

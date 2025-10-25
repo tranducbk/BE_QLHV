@@ -87,8 +87,9 @@ const buildAchievementResponse = async (studentId) => {
     ],
   });
 
-  // Map về structure cũ
+  // Map về structure cũ - PHẢI BẮT ĐẦU VỚI id để frontend có thể update/delete
   const yearlyAchievements = yearly.map((ya) => ({
+    id: ya.id, // ← THÊM id để frontend có thể update/delete
     year: ya.year,
     decisionNumber: ya.decisionNumber,
     decisionDate: ya.decisionDate,
@@ -99,12 +100,16 @@ const buildAchievementResponse = async (studentId) => {
     scientific: {
       initiatives: (ya.scientific_initiatives || []).map((i) => ({
         id: i.id,
-        name: i.name,
+        title: i.title,
+        description: i.description || "",
+        year: i.year || new Date().getFullYear(),
         status: i.status,
       })),
       topics: (ya.scientific_topics || []).map((t) => ({
         id: t.id,
-        name: t.name,
+        title: t.title,
+        description: t.description || "",
+        year: t.year || new Date().getFullYear(),
         status: t.status,
       })),
     },
@@ -231,7 +236,9 @@ const addYearlyAchievement = async (req, res) => {
       await ScientificInitiative.bulkCreate(
         scientific.initiatives.map((i) => ({
           yearlyAchievementId: created.id,
-          name: i.name,
+          title: i.title,
+          description: i.description || "",
+          year: i.year || new Date().getFullYear(),
           status: i.status || "pending",
         }))
       );
@@ -240,7 +247,9 @@ const addYearlyAchievement = async (req, res) => {
       await ScientificTopic.bulkCreate(
         scientific.topics.map((t) => ({
           yearlyAchievementId: created.id,
-          name: t.name,
+          title: t.title,
+          description: t.description || "",
+          year: t.year || new Date().getFullYear(),
           status: t.status || "pending",
         }))
       );
@@ -288,7 +297,9 @@ const addYearlyAchievementByAdmin = async (req, res) => {
       await ScientificInitiative.bulkCreate(
         scientific.initiatives.map((i) => ({
           yearlyAchievementId: created.id,
-          name: i.name,
+          title: i.title,
+          description: i.description || "",
+          year: i.year || new Date().getFullYear(),
           status: i.status || "pending",
         }))
       );
@@ -297,7 +308,9 @@ const addYearlyAchievementByAdmin = async (req, res) => {
       await ScientificTopic.bulkCreate(
         scientific.topics.map((t) => ({
           yearlyAchievementId: created.id,
-          name: t.name,
+          title: t.title,
+          description: t.description || "",
+          year: t.year || new Date().getFullYear(),
           status: t.status || "pending",
         }))
       );
@@ -360,7 +373,9 @@ const updateYearlyAchievement = async (req, res) => {
         await ScientificInitiative.bulkCreate(
           updateData.scientific.initiatives.map((i) => ({
             yearlyAchievementId: ya.id,
-            name: i.name,
+            title: i.title,
+            description: i.description || "",
+            year: i.year || new Date().getFullYear(),
             status: i.status || "pending",
           }))
         );
@@ -369,7 +384,9 @@ const updateYearlyAchievement = async (req, res) => {
         await ScientificTopic.bulkCreate(
           updateData.scientific.topics.map((t) => ({
             yearlyAchievementId: ya.id,
-            name: t.name,
+            title: t.title,
+            description: t.description || "",
+            year: t.year || new Date().getFullYear(),
             status: t.status || "pending",
           }))
         );
@@ -384,22 +401,19 @@ const updateYearlyAchievement = async (req, res) => {
   }
 };
 
-// Cập nhật khen thưởng cho admin
+// Cập nhật khen thưởng cho admin - theo achievementId
 const updateYearlyAchievementByAdmin = async (req, res) => {
   try {
-    const { studentId, year } = req.params;
+    const { achievementId } = req.params;
     const updateData = req.body;
 
-    const ya = await YearlyAchievement.findOne({
-      where: { studentId, year: parseInt(year) },
-    });
+    const ya = await YearlyAchievement.findByPk(achievementId);
     if (!ya) {
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy khen thưởng năm này" });
+      return res.status(404).json({ message: "Không tìm thấy khen thưởng" });
     }
 
     const fields = [
+      "year", // ← THÊM year để có thể cập nhật năm
       "decisionNumber",
       "decisionDate",
       "title",
@@ -427,7 +441,9 @@ const updateYearlyAchievementByAdmin = async (req, res) => {
         await ScientificInitiative.bulkCreate(
           updateData.scientific.initiatives.map((i) => ({
             yearlyAchievementId: ya.id,
-            name: i.name,
+            title: i.title,
+            description: i.description || "",
+            year: i.year || new Date().getFullYear(),
             status: i.status || "pending",
           }))
         );
@@ -436,14 +452,16 @@ const updateYearlyAchievementByAdmin = async (req, res) => {
         await ScientificTopic.bulkCreate(
           updateData.scientific.topics.map((t) => ({
             yearlyAchievementId: ya.id,
-            name: t.name,
+            title: t.title,
+            description: t.description || "",
+            year: t.year || new Date().getFullYear(),
             status: t.status || "pending",
           }))
         );
       }
     }
 
-    const resp = await buildAchievementResponse(studentId);
+    const resp = await buildAchievementResponse(ya.studentId);
     return res.status(200).json(resp);
   } catch (error) {
     console.error("Error updating achievement:", error);
@@ -467,12 +485,18 @@ const deleteYearlyAchievement = async (req, res) => {
   }
 };
 
-// Xóa khen thưởng cho admin
+// Xóa khen thưởng cho admin - theo achievementId
 const deleteYearlyAchievementByAdmin = async (req, res) => {
   try {
-    const { studentId, year } = req.params;
+    const { achievementId } = req.params;
+
+    const ya = await YearlyAchievement.findByPk(achievementId);
+    if (!ya) {
+      return res.status(404).json({ message: "Không tìm thấy khen thưởng" });
+    }
+
     await YearlyAchievement.destroy({
-      where: { studentId, year: parseInt(year) },
+      where: { id: achievementId },
     });
 
     return res.status(200).json({ message: "Xóa khen thưởng thành công" });

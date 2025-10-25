@@ -213,7 +213,7 @@ model semesters {
 model students {
   id                      String                @id @db.Uuid
   studentId               String?               @unique @db.VarChar(255)
-  fullName                String?               @unique @db.VarChar(255)
+  fullName                String?               @db.VarChar(255)
   gender                  String?               @db.VarChar(255)
   birthday                DateTime?             @db.Timestamptz(6)
   hometown                String?               @db.VarChar(255)

@@ -45,17 +45,17 @@ router.post(
   addYearlyAchievementByAdmin
 );
 
-// Cập nhật khen thưởng cho học viên (admin)
+// Cập nhật khen thưởng cho học viên (admin) - theo achievementId
 router.put(
-  "/admin/:studentId/:year",
+  "/admin/:achievementId",
   verifyToken,
   isAdmin,
   updateYearlyAchievementByAdmin
 );
 
-// Xóa khen thưởng cho học viên (admin)
+// Xóa khen thưởng cho học viên (admin) - theo achievementId
 router.delete(
-  "/admin/:studentId/:year",
+  "/admin/:achievementId",
   verifyToken,
   isAdmin,
   deleteYearlyAchievementByAdmin

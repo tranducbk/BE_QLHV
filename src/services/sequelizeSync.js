@@ -4,10 +4,14 @@ require("../models");
 
 async function syncModels() {
   try {
-    await sequelize.sync({ alter: true });
-    console.log("Đồng bộ models Sequelize thành công");
+    // Không sync với alter: true vì nó sẽ tạo lại constraints không mong muốn
+    // Database schema được quản lý bởi Prisma
+    // await sequelize.sync({ alter: true });
+    console.log(
+      "Sequelize models loaded (không sync để tránh tạo lại constraints)"
+    );
   } catch (error) {
-    console.error("Lỗi đồng bộ models Sequelize:", error?.message || error);
+    console.error("Lỗi load models Sequelize:", error?.message || error);
   }
 }
 

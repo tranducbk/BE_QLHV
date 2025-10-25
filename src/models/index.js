@@ -143,8 +143,12 @@ ScientificTopic.belongsTo(YearlyAchievement, {
 });
 
 // User - Student/Commander (optional FKs stored in user)
-User.belongsTo(Student, { foreignKey: "studentId" });
-User.belongsTo(Commander, { foreignKey: "commanderId" });
+// Khi xóa Student/Commander → Xóa User liên kết
+Student.hasMany(User, { foreignKey: "studentId", onDelete: "CASCADE" });
+User.belongsTo(Student, { foreignKey: "studentId", onDelete: "CASCADE" });
+
+Commander.hasMany(User, { foreignKey: "commanderId", onDelete: "CASCADE" });
+User.belongsTo(Commander, { foreignKey: "commanderId", onDelete: "CASCADE" });
 
 module.exports = {
   sequelize,

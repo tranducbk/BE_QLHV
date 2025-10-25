@@ -10,7 +10,7 @@ const Student = sequelize.define(
       primaryKey: true,
     },
     studentId: { type: DataTypes.STRING, unique: true },
-    fullName: { type: DataTypes.STRING, unique: true },
+    fullName: { type: DataTypes.STRING },
     gender: DataTypes.STRING,
     birthday: DataTypes.DATE,
     hometown: DataTypes.STRING,
