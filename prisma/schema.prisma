@@ -222,6 +222,8 @@ model students {
   avatar                  String?               @default("https://i.pinimg.com/736x/81/09/3a/81093a0429e25b0ff579fa41aa96c421.jpg") @db.VarChar(255)
   currentCpa4             Float?                @default(0)
   currentCpa10            Float?                @default(0)
+  familyMembers           Json?
+  foreignRelations        Json?
   createdAt               DateTime?             @db.Timestamptz(6)
   updatedAt               DateTime?             @db.Timestamptz(6)
   classId                 String?               @db.Uuid
@@ -324,26 +326,29 @@ model yearly_achievements {
 }
 
 model yearly_results {
-  id                String             @id @db.Uuid
-  studentId         String             @db.Uuid
-  schoolYear        String             @db.VarChar(255)
-  averageGrade4     Float?             @default(0)
-  averageGrade10    Float?             @default(0)
-  cumulativeGrade4  Float?             @default(0)
-  cumulativeGrade10 Float?             @default(0)
-  cumulativeCredits Int?               @default(0)
-  totalCredits      Int?               @default(0)
-  totalSubjects     Int?               @default(0)
-  passedSubjects    Int?               @default(0)
-  failedSubjects    Int?               @default(0)
-  debtCredits       Int?               @default(0)
-  academicStatus    String?            @db.VarChar(255)
-  studentLevel      Int?               @default(1)
-  semesterIds       String[]           @default([]) @db.Uuid
-  createdAt         DateTime?          @db.Timestamptz(6)
-  updatedAt         DateTime?          @db.Timestamptz(6)
-  semester_results  semester_results[]
-  students          students           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                          String             @id @db.Uuid
+  studentId                   String             @db.Uuid
+  schoolYear                  String             @db.VarChar(255)
+  averageGrade4               Float?             @default(0)
+  averageGrade10              Float?             @default(0)
+  cumulativeGrade4            Float?             @default(0)
+  cumulativeGrade10           Float?             @default(0)
+  cumulativeCredits           Int?               @default(0)
+  totalCredits                Int?               @default(0)
+  totalSubjects               Int?               @default(0)
+  passedSubjects              Int?               @default(0)
+  failedSubjects              Int?               @default(0)
+  debtCredits                 Int?               @default(0)
+  academicStatus              String?            @db.VarChar(255)
+  studentLevel                Int?               @default(1)
+  semesterIds                 String[]           @default([]) @db.Uuid
+  partyRating                 String?            @db.VarChar(255)
+  trainingRating              String?            @db.VarChar(255)
+  partyRatingDecisionNumber   String?            @db.VarChar(255)
+  createdAt                   DateTime?          @db.Timestamptz(6)
+  updatedAt                   DateTime?          @db.Timestamptz(6)
+  semester_results            semester_results[]
+  students                    students           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, schoolYear], map: "yearly_results_student_id_school_year")
 }

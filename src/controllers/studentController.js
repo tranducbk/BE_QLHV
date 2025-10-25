@@ -6,7 +6,12 @@ const {
   ClassModel,
   User,
   CutRice,
+  TuitionFee,
+  TimeTable,
 } = require("../models");
+const classService = require("../services/classService");
+const autoCutRiceService = require("../services/autoCutRiceService");
+const crypto = require("crypto");
 
 /**
  * @swagger
@@ -220,6 +225,9 @@ const updateStudent = async (req, res) => {
     const student = await Student.findByPk(req.params.studentId);
     if (!student) return res.status(404).json("Không tìm thấy sinh viên");
 
+    // Lưu classId cũ để kiểm tra chuyển lớp
+    const oldClassId = student.classId;
+
     await student.update({
       studentId: newStudentId,
       fullName,
@@ -248,7 +256,14 @@ const updateStudent = async (req, res) => {
       probationaryPartyMember,
       dateOfEnlistment,
       avatar,
+      familyMembers: familyMembers || student.familyMembers || [],
+      foreignRelations: foreignRelations || student.foreignRelations || [],
     });
+
+    // Cập nhật số lượng sinh viên nếu có chuyển lớp
+    if (oldClassId !== classId) {
+      await classService.transferStudentClass(oldClassId, classId);
+    }
 
     const updatedStudent = await Student.findByPk(req.params.studentId, {
       include: [
@@ -274,7 +289,6 @@ const updateStudent = async (req, res) => {
 const getTuitionFee = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { TuitionFee } = require("../models");
     const where = { studentId };
     if (req.query.semester) where.semester = String(req.query.semester);
     const fees = await TuitionFee.findAll({
@@ -290,7 +304,6 @@ const getTuitionFee = async (req, res) => {
 const addTuitionFee = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { TuitionFee } = require("../models");
     const created = await TuitionFee.create({
       studentId,
       totalAmount: req.body.totalAmount,
@@ -411,7 +424,6 @@ const createAutoCutRice = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.updateAutoCutRice(
       studentId
     );
@@ -431,7 +443,6 @@ const updateAutoCutRice = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.updateAutoCutRice(
       studentId
     );
@@ -451,7 +462,6 @@ const resetAutoCutRice = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const autoCutRiceService = require("../services/autoCutRiceService");
     const cutRiceSchedule = await autoCutRiceService.resetToAutoCutRice(
       studentId
     );
@@ -539,7 +549,6 @@ const deleteCutRice = async (req, res) => {
 const deleteTuitionFee = async (req, res) => {
   try {
     const { studentId, feeId } = req.params;
-    const { TuitionFee } = require("../models");
     const destroyed = await TuitionFee.destroy({
       where: { id: feeId, studentId },
     });
@@ -556,7 +565,6 @@ const deleteTuitionFee = async (req, res) => {
 const updateTuitionFee = async (req, res) => {
   try {
     const { studentId, tuitionFeeId } = req.params;
-    const { TuitionFee } = require("../models");
     const fee = await TuitionFee.findByPk(tuitionFeeId);
     if (!fee || fee.studentId !== studentId)
       return res.status(404).json({ message: "tuitionFee không tồn tại" });
@@ -578,7 +586,6 @@ const debugCutRice = async (req, res) => {
     }
 
     // Lấy thông tin timeTable từ model mới
-    const { TimeTable } = require("../models");
     const timeTable = await TimeTable.findOne({
       where: { studentId },
     });
@@ -612,7 +619,7 @@ const addFamilyMember = async (req, res) => {
 
     // Thêm ID cho family member
     const newFamilyMember = {
-      id: require("crypto").randomUUID(),
+      id: crypto.randomUUID(),
       ...familyMemberData,
     };
 
@@ -737,7 +744,7 @@ const addForeignRelation = async (req, res) => {
 
     // Thêm ID cho foreign relation
     const newForeignRelation = {
-      id: require("crypto").randomUUID(),
+      id: crypto.randomUUID(),
       ...foreignRelationData,
     };
 

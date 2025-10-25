@@ -6,6 +6,7 @@ const {
   Student,
 } = require("../models");
 const classService = require("../services/classService");
+const { fn, col } = require("sequelize");
 
 const getUniversityHierarchy = async (req, res) => {
   try {
@@ -78,9 +79,34 @@ const getEducationLevelsByOrganization = async (req, res) => {
 const getClassesByEducationLevel = async (req, res) => {
   try {
     const { educationLevelId } = req.params;
-    const classes = await ClassModel.findAll({ where: { educationLevelId } });
-    return res.status(200).json(classes);
+
+    // Lấy danh sách lớp
+    const classes = await ClassModel.findAll({
+      where: { educationLevelId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Đếm lại số sinh viên thực tế cho mỗi lớp
+    const classesWithCount = await Promise.all(
+      classes.map(async (cls) => {
+        const studentCount = await Student.count({
+          where: { classId: cls.id }
+        });
+
+        return {
+          id: cls.id,
+          className: cls.className,
+          educationLevelId: cls.educationLevelId,
+          studentCount: studentCount,
+          createdAt: cls.createdAt,
+          updatedAt: cls.updatedAt,
+        };
+      })
+    );
+
+    return res.status(200).json(classesWithCount);
   } catch (error) {
+    console.error('Error in getClassesByEducationLevel:', error);
     return res.status(500).json({ message: "Lỗi server" });
   }
 };
@@ -678,7 +704,6 @@ const getEducationLevelHierarchy = async (req, res) => {
 
 const syncAllClassesStudentCount = async (req, res) => {
   try {
-    const classService = require("../services/classService");
     await classService.updateAllClassesStudentCount();
 
     return res.status(200).json({
@@ -692,7 +717,6 @@ const syncAllClassesStudentCount = async (req, res) => {
 const syncClassStudentCount = async (req, res) => {
   try {
     const { classId } = req.params;
-    const classService = require("../services/classService");
     const studentCount = await classService.updateClassStudentCount(classId);
 
     return res.status(200).json({
