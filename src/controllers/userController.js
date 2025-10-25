@@ -34,12 +34,6 @@ const getUser = async (req, res) => {
         },
         {
           model: Commander,
-          include: [
-            {
-              model: University,
-              attributes: ["id", "universityCode", "universityName"],
-            },
-          ],
         },
       ],
     });
