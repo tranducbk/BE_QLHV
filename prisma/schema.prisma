@@ -118,10 +118,25 @@ model notifications {
   studentId String    @db.Uuid
   title     String    @db.VarChar(255)
   content   String?
+  type      String?   @db.VarChar(255) // "new_semester", "update_info", "tuition_fee", "party_rating", "training_rating"
+  link      String?   @db.VarChar(255) // URL to navigate when clicked
   isRead    Boolean?  @default(false)
   createdAt DateTime? @db.Timestamptz(6)
   updatedAt DateTime? @db.Timestamptz(6)
   students  students  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model admin_notifications {
+  id          String    @id @db.Uuid
+  studentId   String    @db.Uuid
+  studentName String    @db.VarChar(255)
+  title       String    @db.VarChar(255)
+  content     String?
+  type        String?   @db.VarChar(255) // "student_update_grade", "student_update_tuition", "student_update_profile"
+  link        String?   @db.VarChar(255) // URL to navigate when clicked
+  isRead      Boolean?  @default(false)
+  createdAt   DateTime? @db.Timestamptz(6)
+  updatedAt   DateTime? @db.Timestamptz(6)
 }
 
 model organizations {

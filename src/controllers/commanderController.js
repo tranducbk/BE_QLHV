@@ -145,9 +145,20 @@ const getCommander = async (req, res) => {
 
     const commander = user.commander || null;
 
-    res.status(200).json(commander);
+    if (!commander) {
+      return res.status(404).json({ message: "Không tìm thấy chỉ huy" });
+    }
+
+    // Trả về commander với đầy đủ context (bao gồm isAdmin từ user)
+    const commanderWithContext = {
+      ...commander.toJSON(),
+      isAdmin: user.isAdmin, // Thêm isAdmin từ user
+    };
+
+    res.status(200).json(commanderWithContext);
   } catch (error) {
-    return res.status(500).json(error);
+    console.error("Lỗi khi lấy thông tin commander:", error);
+    return res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -910,7 +921,9 @@ const getAllCutRiceByDate = async (req, res) => {
       "saturday",
     ][currentDay];
 
-    const students = await Student.findAll();
+    const students = await Student.findAll({
+      include: [{ model: CutRice, as: "cut_rice", required: false }],
+    });
 
     const cutRiceData = getCutRiceData(students, dayOfWeek);
 
@@ -918,14 +931,19 @@ const getAllCutRiceByDate = async (req, res) => {
 
     return res.status(200).json({ breakfast, lunch, dinner, dayOfWeek });
   } catch (error) {
-    return res.status(500).json(error);
+    console.error("Error in getAllCutRiceByDate:", error);
+    return res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 
 const getCutRiceData = (students, dayOfWeek) => {
   return students
-    .map((student) => student.cutRice.map((cutRice) => cutRice[dayOfWeek]))
-    .filter((cutRiceOfDay) => cutRiceOfDay && cutRiceOfDay.length > 0);
+    .map((student) => {
+      if (!student.cut_rice || !student.cut_rice.weekly) return null;
+      const dayData = student.cut_rice.weekly[dayOfWeek];
+      return dayData || null;
+    })
+    .filter((cutRiceOfDay) => cutRiceOfDay !== null);
 };
 
 const countMeals = (cutRiceData) => {
@@ -933,10 +951,10 @@ const countMeals = (cutRiceData) => {
     lunch = 0,
     dinner = 0;
   cutRiceData.forEach((item) => {
-    if (item.length > 0) {
-      if (item[0].breakfast) breakfast++;
-      if (item[0].lunch) lunch++;
-      if (item[0].dinner) dinner++;
+    if (item) {
+      if (item.breakfast) breakfast++;
+      if (item.lunch) lunch++;
+      if (item.dinner) dinner++;
     }
   });
   return { breakfast, lunch, dinner };
@@ -1879,16 +1897,16 @@ const getTopStudentsByLatestYear = async (req, res) => {
 };
 
 const createNotification = async (req, res) => {
-  const { title, content, studentId } = req.body;
+  const { title, content, studentId, type, link } = req.body;
   try {
     if (studentId) {
-      await Notification.create({ studentId, title, content });
+      await Notification.create({ studentId, title, content, type, link });
       return res.status(201).json("Thêm thông báo thành công");
     }
     const students = await Student.findAll({ attributes: ["id"] });
     if (!students.length)
       return res.status(200).json("Không có học viên để gửi");
-    const rows = students.map((s) => ({ studentId: s.id, title, content }));
+    const rows = students.map((s) => ({ studentId: s.id, title, content, type, link }));
     await Notification.bulkCreate(rows);
     return res
       .status(201)
@@ -1969,13 +1987,12 @@ const deleteNotification = async (req, res) => {
 
 const updateNotification = async (req, res) => {
   const { notificationId } = req.params;
-  const { title, content, dateIssued, author } = req.body;
-  const attachments = req.file ? req.file.buffer.toString("base64") : null;
+  const { title, content, type, link } = req.body;
 
   try {
     const updated = await Notification.findByPk(notificationId);
     if (!updated) return res.status(404).json("Không tìm thấy thông báo");
-    await updated.update({ title, content });
+    await updated.update({ title, content, type, link });
     return res.status(200).json(updated);
   } catch (error) {
     return res.status(500).json("Lỗi server");
@@ -4889,35 +4906,71 @@ const getExcelCutRiceWithSchedule = async (req, res) => {
 const updateStudentRating = async (req, res) => {
   try {
     const { yearlyResultId } = req.params;
-    const { partyRating, trainingRating, decisionNumber, studentId } = req.body;
+    const { partyRating, trainingRating, decisionNumber, studentId, schoolYear } = req.body;
 
-    // Tìm student theo studentId (SQL)
-    const student = await Student.findOne({
-      where: { studentId: studentId },
-    });
+    // Tìm student theo id (UUID) - studentId từ frontend là UUID của student
+    const student = await Student.findByPk(studentId);
 
     if (!student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
 
-    // Tìm yearly result cần cập nhật
-    // SQL: cập nhật trên bảng yearly_results
-    const yr = await YearlyResult.findByPk(yearlyResultId);
-    if (!yr || yr.studentId !== studentId) {
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy kết quả năm học" });
+    let yr = null;
+
+    // Nếu có yearlyResultId, tìm và cập nhật
+    if (yearlyResultId && yearlyResultId !== "null" && yearlyResultId !== "undefined") {
+      yr = await YearlyResult.findByPk(yearlyResultId);
+      if (!yr || yr.studentId !== studentId) {
+        return res
+          .status(404)
+          .json({ message: "Không tìm thấy kết quả năm học" });
+      }
+    } else if (schoolYear) {
+      // Nếu không có yearlyResultId nhưng có schoolYear, tìm hoặc tạo mới
+      yr = await YearlyResult.findOne({
+        where: {
+          studentId: studentId,
+          schoolYear: schoolYear,
+        },
+      });
+
+      if (!yr) {
+        // Tạo mới YearlyResult nếu chưa có
+        yr = await YearlyResult.create({
+          studentId: studentId,
+          schoolYear: schoolYear,
+          averageGrade4: 0,
+          averageGrade10: 0,
+          cumulativeCredits: 0,
+          academicStatus: "",
+          partyRating: partyRating || null,
+          trainingRating: trainingRating || null,
+          partyRatingDecisionNumber: decisionNumber || "",
+        });
+
+        return res.status(201).json({
+          message: "Tạo mới và cập nhật xếp loại thành công",
+          data: yr,
+        });
+      }
+    } else {
+      return res.status(400).json({
+        message: "Cần có yearlyResultId hoặc schoolYear để cập nhật"
+      });
     }
 
     const update = {};
-    if (partyRating) {
+    if (partyRating !== undefined && partyRating !== null) {
       update.partyRatingDecisionNumber = decisionNumber || "";
       update.partyRating = partyRating;
     }
-    if (trainingRating) {
+    if (trainingRating !== undefined && trainingRating !== null) {
       update.trainingRating = trainingRating;
     }
     await yr.update(update);
+
+    // Reload để lấy dữ liệu mới nhất
+    await yr.reload();
 
     res.status(200).json({
       message: "Cập nhật xếp loại thành công",
@@ -5677,6 +5730,20 @@ const getAllStudentsForTrainingRating = async (req, res) => {
           studentSchoolYear = latestYearly.schoolYear;
         }
 
+        // Tìm yearlyResult phù hợp với schoolYear
+        let yearlyResult = null;
+        let trainingRatingValue = null;
+
+        if (studentSchoolYear && studentSchoolYear !== "Chưa có dữ liệu") {
+          yearlyResult = yearlyResults.find(
+            (yr) => yr.schoolYear === studentSchoolYear
+          );
+
+          if (yearlyResult) {
+            trainingRatingValue = yearlyResult.trainingRating;
+          }
+        }
+
         // Tạo kết quả cho sinh viên
         const trainingRating = {
           id: student.id,
@@ -5687,11 +5754,11 @@ const getAllStudentsForTrainingRating = async (req, res) => {
           className: student.class?.className || "Chưa có lớp",
           unit: student.unit || "",
           schoolYear: studentSchoolYear,
-          yearlyResultId: null,
-          cumulativeCredit: 0,
+          yearlyResultId: yearlyResult?.id || null,
+          cumulativeCredit: yearlyResult?.cumulativeCredit || 0,
           totalDebt: 0,
           studentLevel: 1,
-          trainingRating: student.trainingRating || null,
+          trainingRating: trainingRatingValue || null,
         };
 
         trainingRatings.push(trainingRating);
@@ -5731,6 +5798,8 @@ const getTrainingRatings = async (req, res) => {
       include: [
         { model: University, attributes: ["universityName"] },
         { model: ClassModel, attributes: ["className"] },
+        { model: SemesterResult, required: false },
+        { model: YearlyResult, required: false },
       ],
     });
 

@@ -5,6 +5,10 @@ const {
   Student,
   Commander,
   CommanderDutySchedule,
+  University,
+  Organization,
+  EducationLevel,
+  ClassModel,
 } = require("../models");
 const { Op } = require("sequelize");
 const limit = 11;
@@ -13,8 +17,30 @@ const getUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.userId, {
       include: [
-        { model: Student, attributes: ["id", "avatar", "fullName", "email"] },
-        { model: Commander, attributes: ["id", "avatar", "fullName", "email"] },
+        {
+          model: Student,
+          include: [
+            {
+              model: University,
+              attributes: ["id", "universityCode", "universityName"],
+            },
+            {
+              model: Organization,
+              attributes: ["id", "organizationName", "travelTime"],
+            },
+            { model: EducationLevel, attributes: ["id", "levelName"] },
+            { model: ClassModel, attributes: ["id", "className"] },
+          ],
+        },
+        {
+          model: Commander,
+          include: [
+            {
+              model: University,
+              attributes: ["id", "universityCode", "universityName"],
+            },
+          ],
+        },
       ],
     });
 
@@ -34,7 +60,8 @@ const getUser = async (req, res) => {
 
     return res.status(200).json(userWithAvatar);
   } catch (error) {
-    return res.status(500).json(error);
+    console.error("Error in getUser:", error);
+    return res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 

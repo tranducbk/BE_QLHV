@@ -76,15 +76,58 @@ router.get("/all", verifyToken, getAllStudentsWithHierarchy);
 // Helper route: Get student by userId (for backward compatibility)
 router.get("/by-user/:userId", verifyToken, async (req, res) => {
   try {
-    const user = await require("../models").User.findByPk(req.params.userId, {
-      include: [{ model: require("../models").Student }],
+    const {
+      User,
+      Student,
+      University,
+      Organization,
+      EducationLevel,
+      ClassModel,
+    } = require("../models");
+
+    const user = await User.findByPk(req.params.userId, {
+      include: [
+        {
+          model: Student,
+          include: [
+            {
+              model: University,
+              attributes: ["id", "universityCode", "universityName"],
+            },
+            {
+              model: Organization,
+              attributes: ["id", "organizationName", "travelTime"],
+            },
+            { model: EducationLevel, attributes: ["id", "levelName"] },
+            { model: ClassModel, attributes: ["id", "className"] },
+          ],
+        },
+      ],
     });
+
     if (!user || !user.student) {
       return res.status(404).json({ message: "Không tìm thấy sinh viên" });
     }
-    return res.status(200).json(user.student);
+
+    // Đảm bảo familyMembers và foreignRelations được trả về
+    const studentJson = user.student.toJSON();
+    const studentData = {
+      ...studentJson,
+      familyMembers: user.student.familyMembers || [],
+      foreignRelations: user.student.foreignRelations || [],
+      // Đổi tên field từ education_level sang educationLevel để đồng nhất với frontend
+      educationLevel: studentJson.education_level || studentJson.educationLevel,
+    };
+
+    // Xóa field education_level cũ để tránh trùng lặp
+    if (studentData.education_level) {
+      delete studentData.education_level;
+    }
+
+    return res.status(200).json(studentData);
   } catch (error) {
-    return res.status(500).json({ message: "Lỗi server" });
+    console.error("Error in /by-user/:userId:", error);
+    return res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 });
 

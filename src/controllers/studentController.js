@@ -136,11 +136,19 @@ const getStudent = async (req, res) => {
     }
 
     // Đảm bảo familyMembers và foreignRelations được trả về
+    const studentJson = student.toJSON();
     const studentData = {
-      ...student.toJSON(),
+      ...studentJson,
       familyMembers: student.familyMembers || [],
       foreignRelations: student.foreignRelations || [],
+      // Đổi tên field từ education_level sang educationLevel để đồng nhất với frontend
+      educationLevel: studentJson.education_level || studentJson.educationLevel,
     };
+
+    // Xóa field education_level cũ để tránh trùng lặp
+    if (studentData.education_level) {
+      delete studentData.education_level;
+    }
 
     res.status(200).json(studentData);
   } catch (error) {
@@ -280,7 +288,18 @@ const updateStudent = async (req, res) => {
       ],
     });
 
-    return res.status(200).json(updatedStudent);
+    // Transform field name từ education_level sang educationLevel
+    const studentJson = updatedStudent.toJSON();
+    const responseData = {
+      ...studentJson,
+      educationLevel: studentJson.education_level || studentJson.educationLevel,
+    };
+
+    if (responseData.education_level) {
+      delete responseData.education_level;
+    }
+
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json("Lỗi server");
   }
