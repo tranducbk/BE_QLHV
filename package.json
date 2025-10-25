@@ -6,7 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "add-role-column": "node src/scripts/addRoleColumn.js",
+    "init-super-admin": "node src/scripts/initSuperAdmin.js"
   },
   "author": "NH1321",
   "license": "ISC",

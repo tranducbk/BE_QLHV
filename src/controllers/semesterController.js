@@ -66,6 +66,8 @@ const createSemester = async (req, res) => {
           studentId: student.id,
           title: `Thông báo học kỳ mới ${code} năm học ${schoolYear}`,
           content: `Học kỳ ${code} - ${schoolYear} đã được tạo. Vui lòng kiểm tra thông tin học tập và đăng ký theo quy định.`,
+          type: "new_semester",
+          link: "/users/semester-results",
           isRead: false,
         }));
 

@@ -4,6 +4,23 @@ const getTimeTable = async (req, res) => {
   try {
     const { studentId } = req.params;
 
+    // Kiểm tra quyền truy cập - chỉ cho phép xem lịch của chính mình
+    const requestingUserId = req.user?.id;
+    const user = await User.findByPk(requestingUserId);
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ message: "Không tìm thấy thông tin người dùng" });
+    }
+
+    // Chỉ cho phép xem lịch của chính mình (trừ SUPER_ADMIN có thể xem tất cả)
+    if (user.studentId !== studentId && req.user?.role !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        message: "Bạn chỉ có thể xem lịch học của chính mình",
+      });
+    }
+
     // Lấy lịch học từ model time_table
     const timeTable = await TimeTable.findOne({
       where: { studentId: studentId },
@@ -27,64 +44,65 @@ const getTimeTable = async (req, res) => {
 };
 
 const createTimeTable = async (req, res) => {
-    const { studentId } = req.params;
-    const scheduleData = req.body;
+  const { studentId } = req.params;
+  const scheduleData = req.body;
 
-    // Tự động tạo time string từ startTime và endTime
-    if (scheduleData.startTime && scheduleData.endTime) {
-      scheduleData.time = `${scheduleData.startTime} - ${scheduleData.endTime}`;
-    }
+  // Tự động tạo time string từ startTime và endTime
+  if (scheduleData.startTime && scheduleData.endTime) {
+    scheduleData.time = `${scheduleData.startTime} - ${scheduleData.endTime}`;
+  }
 
-    // Thêm id cho schedule mới nếu chưa có
-    if (!scheduleData.id) {
-      const { v4: uuidv4 } = require("uuid");
-      scheduleData.id = uuidv4();
-    }
+  // Thêm id cho schedule mới nếu chưa có
+  if (!scheduleData.id) {
+    const { v4: uuidv4 } = require("uuid");
+    scheduleData.id = uuidv4();
+  }
 
-    // Tìm hoặc tạo timeTable cho sinh viên
-    let timeTable = await TimeTable.findOne({
-      where: { studentId: studentId },
+  // Tìm hoặc tạo timeTable cho sinh viên
+  let timeTable = await TimeTable.findOne({
+    where: { studentId: studentId },
+  });
+
+  if (!timeTable) {
+    // Tạo mới timeTable cho sinh viên
+    timeTable = await TimeTable.create({
+      studentId: studentId,
+      schedules: [scheduleData],
     });
+  } else {
+    // Thêm schedule vào timeTable hiện có
+    const currentSchedules = timeTable.schedules || [];
+    currentSchedules.push(scheduleData);
 
-    if (!timeTable) {
-      // Tạo mới timeTable cho sinh viên
-      timeTable = await TimeTable.create({
-        studentId: studentId,
-        schedules: [scheduleData],
-      });
-    } else {
-      // Thêm schedule vào timeTable hiện có
-      const currentSchedules = timeTable.schedules || [];
-      currentSchedules.push(scheduleData);
+    // Sử dụng raw SQL để cập nhật JSONB field
+    const { sequelize } = require("../services/sequelize");
+    await sequelize.query(
+      "UPDATE time_tables SET schedules = $1 WHERE id = $2",
+      {
+        bind: [JSON.stringify(currentSchedules), timeTable.id],
+        type: sequelize.QueryTypes.UPDATE,
+      }
+    );
+  }
 
-      // Sử dụng raw SQL để cập nhật JSONB field
-      const { sequelize } = require("../services/sequelize");
-      await sequelize.query(
-        "UPDATE time_tables SET schedules = $1 WHERE id = $2",
-        {
-          bind: [JSON.stringify(currentSchedules), timeTable.id],
-          type: sequelize.QueryTypes.UPDATE,
-        }
-      );
-    }
+  // Tự động cập nhật lịch cắt cơm sau khi thêm (chỉ sử dụng SQL)
+  try {
+    const autoCutRiceService = require("../services/autoCutRiceService");
+    const cutRiceSchedule = await autoCutRiceService.generateCutRiceScheduleSQL(
+      studentId
+    );
+    await autoCutRiceService.updateAutoCutRiceWithSchedule(
+      studentId,
+      cutRiceSchedule
+    );
+  } catch (error) {
+    console.error(error.message);
+  }
 
-    // Tự động cập nhật lịch cắt cơm sau khi thêm (chỉ sử dụng SQL)
-    try {
-      const autoCutRiceService = require("../services/autoCutRiceService");
-      const cutRiceSchedule =
-        await autoCutRiceService.generateCutRiceScheduleSQL(studentId);
-      await autoCutRiceService.updateAutoCutRiceWithSchedule(
-        studentId,
-        cutRiceSchedule
-      );
-    } catch (error) {
-      console.error(error.message);
-    }
-
-    return res.status(201).json({
-      schedule: scheduleData,
-      message: "Thêm lịch học thành công và đã cập nhật lịch cắt cơm tự động",
-    });
+  return res.status(201).json({
+    schedule: scheduleData,
+    message: "Thêm lịch học thành công và đã cập nhật lịch cắt cơm tự động",
+  });
 };
 
 const deleteTimeTable = async (req, res) => {

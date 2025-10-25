@@ -4,10 +4,26 @@
 
 const NOTIFICATION_TYPES = {
   NEW_SEMESTER: "new_semester",
+  SEMESTER_RESULT: "semester_result",
+  LEARNING_RESULT: "learning_result",
   UPDATE_INFO: "update_info",
+  PROFILE_UPDATE: "profile_update",
   TUITION_FEE: "tuition_fee",
+  PAYMENT: "payment",
   PARTY_RATING: "party_rating",
   TRAINING_RATING: "training_rating",
+  YEARLY_STATISTICS: "yearly_statistics",
+  TIME_TABLE: "time_table",
+  SCHEDULE: "schedule",
+  CUT_RICE: "cut_rice",
+  MEAL: "meal",
+  COMMANDER_DUTY: "commander_duty",
+  DUTY_SCHEDULE: "duty_schedule",
+  ACHIEVEMENT: "achievement",
+  AWARD: "award",
+  REGULATION: "regulation",
+  REGULATORY_REGIME: "regulatory_regime",
+  NOTIFICATION: "notification",
 };
 
 /**
@@ -31,21 +47,55 @@ const createNotificationData = (title, content, type, customLink = null) => {
 
 /**
  * Get default link based on notification type
+ * Dựa theo các route trong sidebar của user
  * @param {string} type - Notification type
  * @returns {string} Default link for the type
  */
 const getDefaultLinkByType = (type) => {
   switch (type) {
     case NOTIFICATION_TYPES.NEW_SEMESTER:
+    case "semester_result":
+    case "learning_result":
+      // Kết quả học tập
       return "/users/semester-results";
     case NOTIFICATION_TYPES.UPDATE_INFO:
-      return "/users"; // Will be appended with userId in frontend
+    case "profile_update":
+      // Thông tin cá nhân (sẽ được thêm userId ở frontend hoặc nơi gọi)
+      return "/users";
     case NOTIFICATION_TYPES.TUITION_FEE:
+    case "payment":
+      // Học phí
       return "/users/tuition-fee";
     case NOTIFICATION_TYPES.PARTY_RATING:
     case NOTIFICATION_TYPES.TRAINING_RATING:
+    case "yearly_statistics":
+      // Thống kê theo năm
       return "/users/yearly-statistics";
+    case "time_table":
+    case "schedule":
+      // Thời khóa biểu
+      return "/users/time-table";
+    case "cut_rice":
+    case "meal":
+      // Lịch cắt cơm
+      return "/users/cut-rice";
+    case "commander_duty":
+    case "duty_schedule":
+      // Lịch trực chỉ huy
+      return "/users/commander-duty-schedule";
+    case "achievement":
+    case "award":
+      // Khen thưởng
+      return "/users/achievement";
+    case "regulation":
+    case "regulatory_regime":
+      // Chế độ quy định
+      return "/users/regulatory-regime";
+    case "notification":
+      // Thông báo
+      return "/users/notification";
     default:
+      // Mặc định về trang tổng quan
       return "/users";
   }
 };
@@ -59,6 +109,13 @@ const NOTIFICATION_TEMPLATES = {
       "Học kỳ mới đã bắt đầu",
       `Học kỳ ${semester} năm học ${schoolYear} đã được mở. Vui lòng cập nhật kết quả học tập của bạn.`,
       NOTIFICATION_TYPES.NEW_SEMESTER
+    ),
+
+  semesterResult: (semester, schoolYear) =>
+    createNotificationData(
+      "Kết quả học tập đã cập nhật",
+      `Kết quả học tập ${semester} năm học ${schoolYear} của bạn đã được cập nhật. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.SEMESTER_RESULT
     ),
 
   updateInfo: () =>
@@ -94,6 +151,48 @@ const NOTIFICATION_TEMPLATES = {
       "Xếp loại rèn luyện",
       `Xếp loại rèn luyện năm học ${schoolYear} của bạn đã được cập nhật: ${rating}. Vui lòng kiểm tra chi tiết.`,
       NOTIFICATION_TYPES.TRAINING_RATING
+    ),
+
+  yearlyStatistics: (schoolYear) =>
+    createNotificationData(
+      "Thống kê năm học",
+      `Thống kê kết quả năm học ${schoolYear} của bạn đã sẵn sàng. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.YEARLY_STATISTICS
+    ),
+
+  timeTableUpdated: (semester, schoolYear) =>
+    createNotificationData(
+      "Cập nhật thời khóa biểu",
+      `Thời khóa biểu ${semester} năm học ${schoolYear} đã được cập nhật. Vui lòng kiểm tra lịch học mới.`,
+      NOTIFICATION_TYPES.TIME_TABLE
+    ),
+
+  cutRiceUpdated: (date) =>
+    createNotificationData(
+      "Cập nhật lịch cắt cơm",
+      `Lịch cắt cơm ngày ${date} đã được cập nhật. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.CUT_RICE
+    ),
+
+  commanderDutySchedule: (date) =>
+    createNotificationData(
+      "Lịch trực chỉ huy",
+      `Bạn có lịch trực chỉ huy vào ngày ${date}. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.COMMANDER_DUTY
+    ),
+
+  achievementAwarded: (achievementName) =>
+    createNotificationData(
+      "Khen thưởng mới",
+      `Chúc mừng! Bạn đã được trao thưởng: ${achievementName}. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.ACHIEVEMENT
+    ),
+
+  regulationUpdate: () =>
+    createNotificationData(
+      "Cập nhật chế độ quy định",
+      "Chế độ quy định đã được cập nhật. Vui lòng xem chi tiết các quy định mới.",
+      NOTIFICATION_TYPES.REGULATION
     ),
 
   custom: (title, content, type, link = null) =>

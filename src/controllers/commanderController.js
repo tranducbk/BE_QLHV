@@ -158,7 +158,9 @@ const getCommander = async (req, res) => {
     res.status(200).json(commanderWithContext);
   } catch (error) {
     console.error("Lỗi khi lấy thông tin commander:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -193,6 +195,8 @@ const updateTuitionFeeStatus = async (req, res) => {
         studentId,
         title,
         content: docContent,
+        type: "tuition_fee",
+        link: "/users/tuition-fee",
       });
     } catch (_) {}
 
@@ -932,7 +936,9 @@ const getAllCutRiceByDate = async (req, res) => {
     return res.status(200).json({ breakfast, lunch, dinner, dayOfWeek });
   } catch (error) {
     console.error("Error in getAllCutRiceByDate:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -1289,7 +1295,7 @@ const getTimeTables = async (req, res) => {
     }
     if (unit) results = results.filter((r) => r.unit === unit);
     return res.status(200).json(results);
-  } catch (error) { 
+  } catch (error) {
     return res.status(500).json("Lỗi server");
   }
 };
@@ -1906,7 +1912,13 @@ const createNotification = async (req, res) => {
     const students = await Student.findAll({ attributes: ["id"] });
     if (!students.length)
       return res.status(200).json("Không có học viên để gửi");
-    const rows = students.map((s) => ({ studentId: s.id, title, content, type, link }));
+    const rows = students.map((s) => ({
+      studentId: s.id,
+      title,
+      content,
+      type,
+      link,
+    }));
     await Notification.bulkCreate(rows);
     return res
       .status(201)
@@ -3807,8 +3819,8 @@ const getAllStudentsGrades = async (req, res) => {
     const { semester, schoolYear, page = 1, pageSize = 10 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
 
-    console.log('=== getAllStudentsGrades ===');
-    console.log('Query params:', { semester, schoolYear, page, pageSize });
+    console.log("=== getAllStudentsGrades ===");
+    console.log("Query params:", { semester, schoolYear, page, pageSize });
 
     // Kiểm tra xem có semester results nào trong DB không
     const totalSemesterResults = await SemesterResult.count();
@@ -3835,7 +3847,10 @@ const getAllStudentsGrades = async (req, res) => {
 
     // Log raw data để xem structure
     if (students.length > 0) {
-      console.log('First student raw data:', JSON.stringify(students[0].toJSON(), null, 2));
+      console.log(
+        "First student raw data:",
+        JSON.stringify(students[0].toJSON(), null, 2)
+      );
     }
 
     let allLearningResults = [];
@@ -3843,7 +3858,9 @@ const getAllStudentsGrades = async (req, res) => {
     for (const student of students) {
       try {
         const semesterResults = student.semester_results || [];
-        console.log(`Student ${student.id} (${student.fullName}): ${semesterResults.length} semester results`);
+        console.log(
+          `Student ${student.id} (${student.fullName}): ${semesterResults.length} semester results`
+        );
         if (semesterResults.length > 0) {
           semesterResults.map((r) => ({
             semester: r.semester,
@@ -3854,14 +3871,16 @@ const getAllStudentsGrades = async (req, res) => {
         }
         let filteredResults = semesterResults;
         if (semester || schoolYear) {
-          console.log('Filtering with:', { semester, schoolYear });
+          console.log("Filtering with:", { semester, schoolYear });
           filteredResults = semesterResults.filter((result) => {
             let matches = true;
 
             if (semester) {
               const semesterArray = semester.split(",").map((s) => s.trim());
               const semesterMatch = semesterArray.includes(result.semester);
-              console.log(`  Result semester ${result.semester} in [${semesterArray}]? ${semesterMatch}`);
+              console.log(
+                `  Result semester ${result.semester} in [${semesterArray}]? ${semesterMatch}`
+              );
               matches = matches && semesterMatch;
             }
 
@@ -3872,13 +3891,17 @@ const getAllStudentsGrades = async (req, res) => {
               const schoolYearMatch = schoolYearArray.includes(
                 result.schoolYear
               );
-              console.log(`  Result schoolYear ${result.schoolYear} in [${schoolYearArray}]? ${schoolYearMatch}`);
+              console.log(
+                `  Result schoolYear ${result.schoolYear} in [${schoolYearArray}]? ${schoolYearMatch}`
+              );
               matches = matches && schoolYearMatch;
             }
 
             return matches;
           });
-          console.log(`  Filtered from ${semesterResults.length} to ${filteredResults.length} results`);
+          console.log(
+            `  Filtered from ${semesterResults.length} to ${filteredResults.length} results`
+          );
         }
 
         if (filteredResults.length > 0) {
@@ -3966,9 +3989,6 @@ const getAllStudentsGrades = async (req, res) => {
 
     const totalStudents = await Student.count();
     const totalPages = Math.ceil(totalStudents / parseInt(pageSize));
-
-    console.log(`Total learning results: ${allLearningResults.length}`);
-    console.log('=== END getAllStudentsGrades ===\n');
 
     if (req.query.page || req.query.pageSize) {
       return res.status(200).json({
@@ -4906,7 +4926,13 @@ const getExcelCutRiceWithSchedule = async (req, res) => {
 const updateStudentRating = async (req, res) => {
   try {
     const { yearlyResultId } = req.params;
-    const { partyRating, trainingRating, decisionNumber, studentId, schoolYear } = req.body;
+    const {
+      partyRating,
+      trainingRating,
+      decisionNumber,
+      studentId,
+      schoolYear,
+    } = req.body;
 
     // Tìm student theo id (UUID) - studentId từ frontend là UUID của student
     const student = await Student.findByPk(studentId);
@@ -4918,7 +4944,11 @@ const updateStudentRating = async (req, res) => {
     let yr = null;
 
     // Nếu có yearlyResultId, tìm và cập nhật
-    if (yearlyResultId && yearlyResultId !== "null" && yearlyResultId !== "undefined") {
+    if (
+      yearlyResultId &&
+      yearlyResultId !== "null" &&
+      yearlyResultId !== "undefined"
+    ) {
       yr = await YearlyResult.findByPk(yearlyResultId);
       if (!yr || yr.studentId !== studentId) {
         return res
@@ -4948,6 +4978,56 @@ const updateStudentRating = async (req, res) => {
           partyRatingDecisionNumber: decisionNumber || "",
         });
 
+        // Cập nhật thông tin hiện tại trong bảng Student nếu cần
+        try {
+          const updateStudentData = {};
+
+          // Cập nhật điểm trung bình hiện tại nếu có
+          if (yr.averageGrade4 !== undefined && yr.averageGrade4 !== null) {
+            updateStudentData.currentCpa4 = yr.averageGrade4;
+          }
+          if (yr.averageGrade10 !== undefined && yr.averageGrade10 !== null) {
+            updateStudentData.currentCpa10 = yr.averageGrade10;
+          }
+
+          // Cập nhật thông tin student nếu có thay đổi
+          if (Object.keys(updateStudentData).length > 0) {
+            await student.update(updateStudentData);
+          }
+        } catch (updateError) {
+          console.error("Lỗi khi cập nhật thông tin student:", updateError);
+          // Không throw error để không ảnh hưởng đến kết quả chính
+        }
+
+        // Gửi thông báo cho student khi tạo mới
+        try {
+          let notificationTitle = "Tạo mới xếp loại";
+          let notificationContent = `Xếp loại của bạn đã được tạo mới cho năm học ${schoolYear}:\n\n`;
+
+          if (partyRating !== undefined && partyRating !== null) {
+            notificationContent += `- Xếp loại Đảng viên: ${partyRating}\n`;
+            if (decisionNumber) {
+              notificationContent += `- Số quyết định: ${decisionNumber}\n`;
+            }
+          }
+
+          if (trainingRating !== undefined && trainingRating !== null) {
+            notificationContent += `- Xếp loại rèn luyện: ${trainingRating}\n`;
+          }
+
+          notificationContent += `\nVui lòng kiểm tra thông tin chi tiết trong hệ thống.`;
+
+          await Notification.create({
+            studentId: studentId,
+            title: notificationTitle,
+            content: notificationContent,
+            type: "yearly_statistics",
+            link: "/users/yearly-statistics",
+          });
+        } catch (notificationError) {
+          console.error("Lỗi khi gửi thông báo:", notificationError);
+        }
+
         return res.status(201).json({
           message: "Tạo mới và cập nhật xếp loại thành công",
           data: yr,
@@ -4955,7 +5035,7 @@ const updateStudentRating = async (req, res) => {
       }
     } else {
       return res.status(400).json({
-        message: "Cần có yearlyResultId hoặc schoolYear để cập nhật"
+        message: "Cần có yearlyResultId hoặc schoolYear để cập nhật",
       });
     }
 
@@ -4972,6 +5052,57 @@ const updateStudentRating = async (req, res) => {
     // Reload để lấy dữ liệu mới nhất
     await yr.reload();
 
+    // Cập nhật thông tin hiện tại trong bảng Student nếu cần
+    try {
+      const updateStudentData = {};
+
+      // Cập nhật điểm trung bình hiện tại nếu có
+      if (yr.averageGrade4 !== undefined && yr.averageGrade4 !== null) {
+        updateStudentData.currentCpa4 = yr.averageGrade4;
+      }
+      if (yr.averageGrade10 !== undefined && yr.averageGrade10 !== null) {
+        updateStudentData.currentCpa10 = yr.averageGrade10;
+      }
+
+      // Cập nhật thông tin student nếu có thay đổi
+      if (Object.keys(updateStudentData).length > 0) {
+        await student.update(updateStudentData);
+      }
+    } catch (updateError) {
+      console.error("Lỗi khi cập nhật thông tin student:", updateError);
+      // Không throw error để không ảnh hưởng đến kết quả chính
+    }
+
+    // Gửi thông báo cho student
+    try {
+      let notificationTitle = "Cập nhật xếp loại";
+      let notificationContent = `Xếp loại của bạn đã được cập nhật cho năm học ${schoolYear}:\n\n`;
+
+      if (partyRating !== undefined && partyRating !== null) {
+        notificationContent += `- Xếp loại Đảng viên: ${partyRating}\n`;
+        if (decisionNumber) {
+          notificationContent += `- Số quyết định: ${decisionNumber}\n`;
+        }
+      }
+
+      if (trainingRating !== undefined && trainingRating !== null) {
+        notificationContent += `- Xếp loại rèn luyện: ${trainingRating}\n`;
+      }
+
+      notificationContent += `\nVui lòng kiểm tra thông tin chi tiết trong hệ thống.`;
+
+      await Notification.create({
+        studentId: studentId,
+        title: notificationTitle,
+        content: notificationContent,
+        type: "yearly_statistics",
+        link: "/users/yearly-statistics",
+      });
+    } catch (notificationError) {
+      console.error("Lỗi khi gửi thông báo:", notificationError);
+      // Không throw error để không ảnh hưởng đến kết quả chính
+    }
+
     res.status(200).json({
       message: "Cập nhật xếp loại thành công",
       data: yr,
@@ -4985,7 +5116,6 @@ const updateStudentRating = async (req, res) => {
 // Lấy danh sách năm học có dữ liệu
 const getAvailableYears = async (req, res) => {
   try {
-
     const yearlyResults = await YearlyResult.findAll({
       attributes: ["schoolYear"],
       group: ["schoolYear"],
@@ -5009,7 +5139,6 @@ const getYearlyResults = async (req, res) => {
     if (!schoolYear) {
       return res.status(400).json({ message: "Vui lòng cung cấp năm học" });
     }
-
 
     const yearlyResults = await YearlyResult.findAll({
       where: { schoolYear: schoolYear },
@@ -5051,8 +5180,8 @@ const getYearlyStatistics = async (req, res) => {
   try {
     const { schoolYear } = req.query;
 
-    console.log('=== getYearlyStatistics ===');
-    console.log('Query params:', { schoolYear });
+    console.log("=== getYearlyStatistics ===");
+    console.log("Query params:", { schoolYear });
 
     // Lấy tất cả students với thông tin đầy đủ
     const students = await Student.findAll({
@@ -5079,7 +5208,9 @@ const getYearlyStatistics = async (req, res) => {
       try {
         // Lấy tất cả kết quả học kỳ
         const semesterResults = student.semester_results || [];
-        console.log(`Student ${student.fullName}: ${semesterResults.length} semester results`);
+        console.log(
+          `Student ${student.fullName}: ${semesterResults.length} semester results`
+        );
         let yearResults;
 
         if (schoolYear) {
@@ -5200,7 +5331,8 @@ const getYearlyStatistics = async (req, res) => {
             partyRating: existingYearlyResult?.partyRating
               ? {
                   rating: existingYearlyResult.partyRating,
-                  decisionNumber: existingYearlyResult.partyRatingDecisionNumber || ""
+                  decisionNumber:
+                    existingYearlyResult.partyRatingDecisionNumber || "",
                 }
               : null,
             trainingRating: existingYearlyResult?.trainingRating || null,
@@ -5282,7 +5414,8 @@ const getYearlyStatistics = async (req, res) => {
                 partyRating: yearlyResult.partyRating
                   ? {
                       rating: yearlyResult.partyRating,
-                      decisionNumber: yearlyResult.partyRatingDecisionNumber || ""
+                      decisionNumber:
+                        yearlyResult.partyRatingDecisionNumber || "",
                     }
                   : null,
                 trainingRating: yearlyResult.trainingRating || null,
@@ -5384,7 +5517,7 @@ const getYearlyStatistics = async (req, res) => {
     }
 
     console.log(`Total yearly results: ${yearlyResults.length}`);
-    console.log('=== END getYearlyStatistics ===\n');
+    console.log("=== END getYearlyStatistics ===\n");
 
     return res.status(200).json(yearlyResults);
   } catch (error) {
@@ -5507,7 +5640,9 @@ const getAllStudentsForPartyRating = async (req, res) => {
     }
   } catch (error) {
     console.error("Error in getAllStudentsForPartyRating:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -5784,7 +5919,9 @@ const getAllStudentsForTrainingRating = async (req, res) => {
     }
   } catch (error) {
     console.error("Error in getAllStudentsForTrainingRating:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -6981,7 +7118,7 @@ const getExcelTimeTableWithCutRice = async (req, res) => {
 
       timeTableQuery = { studentId: { [Op.in]: studentIds } };
     }
-    
+
     const timeTableData = await TimeTable.findAll({
       where: timeTableQuery,
       include: [

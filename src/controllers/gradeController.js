@@ -188,15 +188,46 @@ const getStudentGrades = async (req, res) => {
       return Math.min(10.0, 2.5 * cumulativeGrade4 + 0.0);
     })();
 
+    // Lấy yearlyResults và format partyRating
+    const yearlyResultsRaw = await YearlyResult.findAll({
+      where: { studentId: user.studentId },
+      order: [["schoolYear", "ASC"]],
+    });
+
+    const yearlyResults = yearlyResultsRaw.map((yr) => ({
+      id: yr.id,
+      studentId: yr.studentId,
+      schoolYear: yr.schoolYear,
+      averageGrade4: yr.averageGrade4,
+      averageGrade10: yr.averageGrade10,
+      cumulativeCredits: yr.cumulativeCredits,
+      cumulativeGrade4: yr.cumulativeGrade4,
+      cumulativeGrade10: yr.cumulativeGrade10,
+      debtCredits: yr.debtCredits,
+      failedSubjects: yr.failedSubjects,
+      totalSubjects: yr.totalSubjects,
+      passedSubjects: yr.passedSubjects,
+      academicStatus: yr.academicStatus,
+      studentLevel: yr.studentLevel,
+      semesterIds: yr.semesterIds,
+      trainingRating: yr.trainingRating || null,
+      // Format partyRating thành object với rating và decisionNumber
+      partyRating: yr.partyRating
+        ? {
+            rating: yr.partyRating,
+            decisionNumber: yr.partyRatingDecisionNumber || "",
+          }
+        : null,
+      createdAt: yr.createdAt,
+      updatedAt: yr.updatedAt,
+    }));
+
     return res.status(200).json({
       studentId: student.studentId,
       fullName: student.fullName,
       positionParty: student.positionParty,
       semesterResults,
-      yearlyResults: await YearlyResult.findAll({
-        where: { studentId: user.studentId },
-        order: [["schoolYear", "ASC"]],
-      }),
+      yearlyResults,
       summary: {
         totalSemesters: semesterResults.length,
         totalCredits: gradeHelper.calculateCumulativeCredits(semesterResults),
@@ -1364,15 +1395,46 @@ const getStudentGradesByStudentId = async (req, res) => {
       return Math.min(10.0, 2.5 * cumulativeGrade4 + 0.0);
     })();
 
+    // Lấy yearlyResults và format partyRating
+    const yearlyResultsRaw = await YearlyResult.findAll({
+      where: { studentId },
+      order: [["schoolYear", "ASC"]],
+    });
+
+    const yearlyResults = yearlyResultsRaw.map((yr) => ({
+      id: yr.id,
+      studentId: yr.studentId,
+      schoolYear: yr.schoolYear,
+      averageGrade4: yr.averageGrade4,
+      averageGrade10: yr.averageGrade10,
+      cumulativeCredits: yr.cumulativeCredits,
+      cumulativeGrade4: yr.cumulativeGrade4,
+      cumulativeGrade10: yr.cumulativeGrade10,
+      debtCredits: yr.debtCredits,
+      failedSubjects: yr.failedSubjects,
+      totalSubjects: yr.totalSubjects,
+      passedSubjects: yr.passedSubjects,
+      academicStatus: yr.academicStatus,
+      studentLevel: yr.studentLevel,
+      semesterIds: yr.semesterIds,
+      trainingRating: yr.trainingRating || null,
+      // Format partyRating thành object với rating và decisionNumber
+      partyRating: yr.partyRating
+        ? {
+            rating: yr.partyRating,
+            decisionNumber: yr.partyRatingDecisionNumber || "",
+          }
+        : null,
+      createdAt: yr.createdAt,
+      updatedAt: yr.updatedAt,
+    }));
+
     return res.status(200).json({
       studentId: student.studentId,
       fullName: student.fullName,
       positionParty: student.positionParty,
       semesterResults,
-      yearlyResults: await YearlyResult.findAll({
-        where: { studentId },
-        order: [["schoolYear", "ASC"]],
-      }),
+      yearlyResults,
       summary: {
         totalSemesters: semesterResults.length,
         totalCredits: gradeHelper.calculateCumulativeCredits(semesterResults),

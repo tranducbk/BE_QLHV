@@ -120,6 +120,7 @@ const Register = async (req, res) => {
         username: req.body.username,
         password: hashedPassword,
         isAdmin: true,
+        role: req.body.role || "ADMIN", // SUPER_ADMIN hoặc ADMIN
         commanderId: newCommander.id,
       });
     } else {
@@ -139,6 +140,7 @@ const Register = async (req, res) => {
         username: req.body.username,
         password: hashedPassword,
         isAdmin: false,
+        role: "USER",
         studentId: newStudent.id,
       });
     }
@@ -192,7 +194,11 @@ const Login = async (req, res) => {
     }
 
     const accessToken = jwt.sign(
-      { id: user.id, admin: user.isAdmin },
+      {
+        id: user.id,
+        admin: user.isAdmin,
+        role: user.role || (user.isAdmin ? "ADMIN" : "USER"),
+      },
       process.env.JWT_SECRET || "your-super-secret-jwt-key-here",
       { expiresIn: "2h" }
     );

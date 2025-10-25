@@ -12,6 +12,7 @@ const UserSql = sequelize.define(
     username: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
     isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
+    role: { type: DataTypes.STRING(50), defaultValue: "USER" }, // SUPER_ADMIN, ADMIN, USER
     studentId: { type: DataTypes.UUID, allowNull: true },
     commanderId: { type: DataTypes.UUID, allowNull: true },
     createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },

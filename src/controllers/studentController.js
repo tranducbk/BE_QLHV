@@ -9,6 +9,26 @@ const {
   TuitionFee,
   TimeTable,
 } = require("../models");
+
+// Helper function để kiểm tra quyền truy cập
+const checkStudentAccess = async (req, studentId) => {
+  const requestingUserId = req.user?.id;
+  const user = await User.findByPk(requestingUserId);
+
+  if (!user) {
+    return { allowed: false, message: "Không tìm thấy thông tin người dùng" };
+  }
+
+  // Chỉ cho phép truy cập dữ liệu của chính mình (trừ SUPER_ADMIN có thể truy cập tất cả)
+  if (user.studentId !== studentId && req.user?.role !== "SUPER_ADMIN") {
+    return {
+      allowed: false,
+      message: "Bạn chỉ có thể truy cập dữ liệu của chính mình",
+    };
+  }
+
+  return { allowed: true };
+};
 const classService = require("../services/classService");
 const autoCutRiceService = require("../services/autoCutRiceService");
 const crypto = require("crypto");
@@ -116,6 +136,24 @@ const getAllStudentsWithHierarchy = async (req, res) => {
 const getStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
+
+    // Kiểm tra quyền truy cập - chỉ cho phép xem thông tin của chính mình
+    const requestingUserId = req.user?.id;
+    const user = await User.findByPk(requestingUserId);
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ message: "Không tìm thấy thông tin người dùng" });
+    }
+
+    // Chỉ cho phép xem thông tin của chính mình (trừ SUPER_ADMIN có thể xem tất cả)
+    if (user.studentId !== studentId && req.user?.role !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        message: "Bạn chỉ có thể xem thông tin của chính mình",
+      });
+    }
+
     const student = await Student.findByPk(studentId, {
       include: [
         {
@@ -308,6 +346,13 @@ const updateStudent = async (req, res) => {
 const getTuitionFee = async (req, res) => {
   try {
     const { studentId } = req.params;
+
+    // Kiểm tra quyền truy cập
+    const accessCheck = await checkStudentAccess(req, studentId);
+    if (!accessCheck.allowed) {
+      return res.status(403).json({ message: accessCheck.message });
+    }
+
     const where = { studentId };
     if (req.query.semester) where.semester = String(req.query.semester);
     const fees = await TuitionFee.findAll({

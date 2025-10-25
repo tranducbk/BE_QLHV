@@ -314,6 +314,7 @@ model users {
   username    String      @unique @db.VarChar(255)
   password    String      @db.VarChar(255)
   isAdmin     Boolean?    @default(false)
+  role        String?     @default("USER") @db.VarChar(50) // SUPER_ADMIN, ADMIN, USER
   studentId   String?     @db.Uuid
   commanderId String?     @db.Uuid
   createdAt   DateTime?   @db.Timestamptz(6)

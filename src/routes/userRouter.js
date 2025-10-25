@@ -14,9 +14,15 @@ const {
   getCommanderDutySchedule,
   getCommanderDutySchedulesCurrent,
   getCommanderDutyScheduleByUserId,
+  initializeSuperAdmin,
+  getAllAdminUsers,
+  getAdminUser,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
 } = require("../controllers/userController");
 const { resetPassword, forgotPassword } = require("../services/forgotPassword");
-const { verifyToken, isAdmin } = require("../middlewares/verify");
+const { verifyToken, isAdmin, isSuperAdmin } = require("../middlewares/verify");
 
 // Auth with user
 router.post("/forgot-password", forgotPassword);
@@ -60,5 +66,15 @@ router.get(
 // CRUD with user
 router.put("/:userId", verifyToken, changePassword);
 router.get("/:userId", verifyToken, getUser);
+
+// Initialize Super Admin (không cần auth - chỉ chạy 1 lần đầu)
+router.post("/initialize-super-admin", initializeSuperAdmin);
+
+// Admin User Management (chỉ SUPER_ADMIN)
+router.get("/admin-users/list", verifyToken, isSuperAdmin, getAllAdminUsers);
+router.get("/admin-users/:id", verifyToken, isSuperAdmin, getAdminUser);
+router.post("/admin-users", verifyToken, isSuperAdmin, createAdminUser);
+router.put("/admin-users/:id", verifyToken, isSuperAdmin, updateAdminUser);
+router.delete("/admin-users/:id", verifyToken, isSuperAdmin, deleteAdminUser);
 
 module.exports = router;

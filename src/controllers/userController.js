@@ -9,12 +9,32 @@ const {
   Organization,
   EducationLevel,
   ClassModel,
+  SemesterResult,
+  TimeTable,
+  TuitionFee,
+  Notification,
+  CutRice,
+  YearlyAchievement,
+  YearlyResult,
+  ScientificInitiative,
+  ScientificTopic,
 } = require("../models");
 const { Op } = require("sequelize");
 const limit = 11;
 
 const getUser = async (req, res) => {
   try {
+    // Kiểm tra quyền truy cập - chỉ cho phép xem thông tin của chính mình
+    const requestingUserId = req.user?.id; // Từ JWT token
+    const targetUserId = req.params.userId;
+
+    // Chỉ cho phép xem thông tin của chính mình (trừ SUPER_ADMIN có thể xem tất cả)
+    if (requestingUserId !== targetUserId && req.user?.role !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        message: "Bạn chỉ có thể xem thông tin của chính mình",
+      });
+    }
+
     const user = await User.findByPk(req.params.userId, {
       include: [
         {
@@ -55,7 +75,9 @@ const getUser = async (req, res) => {
     return res.status(200).json(userWithAvatar);
   } catch (error) {
     console.error("Error in getUser:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -231,6 +253,495 @@ const deleteCommanderDutySchedule = async (req, res) => {
   }
 };
 
+// API khởi tạo Super Admin đầu tiên (chỉ chạy 1 lần)
+const initializeSuperAdmin = async (req, res) => {
+  try {
+    const bcrypt = require("bcrypt");
+
+    // Kiểm tra xem đã có super admin chưa
+    const existingSuperAdmin = await User.findOne({
+      where: { role: "SUPER_ADMIN" },
+    });
+
+    if (existingSuperAdmin) {
+      return res.status(400).json({
+        message: "Super Admin đã tồn tại trong hệ thống",
+      });
+    }
+
+    // Kiểm tra username "superadmin" đã tồn tại chưa
+    const existingUser = await User.findOne({
+      where: { username: "superadmin" },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "Username 'superadmin' đã tồn tại",
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash("123456", 10);
+
+    // Tạo Commander cho Super Admin
+    const newCommander = await Commander.create({
+      commanderId: "SA001",
+      fullName: "Super Administrator",
+      unit: "Ban Quản trị hệ thống",
+      phoneNumber: "",
+      email: "",
+    });
+
+    // Tạo Super Admin User
+    const superAdmin = await User.create({
+      username: "superadmin",
+      password: hashedPassword,
+      isAdmin: true,
+      role: "SUPER_ADMIN",
+      commanderId: newCommander.id,
+    });
+
+    return res.status(201).json({
+      message: "Khởi tạo Super Admin thành công",
+      username: "superadmin",
+      password: "123456",
+      note: "Vui lòng đổi mật khẩu sau khi đăng nhập lần đầu",
+    });
+  } catch (error) {
+    console.error("Error in initializeSuperAdmin:", error);
+    return res.status(500).json({
+      message: "Lỗi server",
+      error: error.message,
+    });
+  }
+};
+
+// API lấy TẤT CẢ tài khoản trong hệ thống - Chỉ trả về thông tin cơ bản
+const getAllAdminUsers = async (req, res) => {
+  try {
+    const { page = 1, search, role } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Loại bỏ SUPER_ADMIN khỏi danh sách
+    let query = {
+      role: { [Op.ne]: "SUPER_ADMIN" },
+    };
+
+    // Filter theo role nếu có
+    if (role && role !== "ALL") {
+      query.role = role; // ADMIN hoặc USER
+    }
+
+    if (search) {
+      // Tìm trong Commander
+      const commanders = await Commander.findAll({
+        where: {
+          fullName: { [Op.iLike]: `%${search}%` },
+        },
+        attributes: ["id"],
+      });
+
+      // Tìm trong Student
+      const students = await Student.findAll({
+        where: {
+          fullName: { [Op.iLike]: `%${search}%` },
+        },
+        attributes: ["id"],
+      });
+
+      const commanderIds = commanders.map((c) => c.id);
+      const studentIds = students.map((s) => s.id);
+
+      query[Op.or] = [
+        { username: { [Op.iLike]: `%${search}%` } },
+        { commanderId: { [Op.in]: commanderIds } },
+        { studentId: { [Op.in]: studentIds } },
+      ];
+    }
+
+    const { rows: users, count: totalCount } = await User.findAndCountAll({
+      where: query,
+      include: [
+        {
+          model: Commander,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+        {
+          model: Student,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+      ],
+      attributes: ["id", "username", "role", "isAdmin", "createdAt"],
+      order: [["createdAt", "DESC"]],
+      offset: skip,
+      limit,
+    });
+
+    // Format response - chỉ trả về thông tin cần thiết
+    const formattedUsers = users.map((user) => {
+      // Ưu tiên lấy thông tin từ Commander nếu là admin, không thì từ Student
+      const profile = user.commander || user.student;
+
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role || "USER", // Chỉ dùng role
+        fullName: profile?.fullName || "",
+        unit: profile?.unit || "",
+        birthday: profile?.birthday || null,
+        avatar: profile?.avatar || null,
+        createdAt: user.createdAt,
+      };
+    });
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return res
+      .status(200)
+      .json({ users: formattedUsers, totalPages, totalCount });
+  } catch (error) {
+    console.error("Error in getAllAdminUsers:", error);
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
+  }
+};
+
+const getAdminUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      include: [
+        {
+          model: Commander,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+        {
+          model: Student,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+      ],
+      attributes: ["id", "username", "role", "isAdmin", "createdAt"],
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User không tồn tại" });
+    }
+
+    // Lấy thông tin từ Commander hoặc Student
+    const profile = user.commander || user.student;
+
+    // Format response - chỉ trả về thông tin cần thiết
+    const formattedUser = {
+      id: user.id,
+      username: user.username,
+      role: user.role || "USER", // Chỉ dùng role
+      fullName: profile?.fullName || "",
+      unit: profile?.unit || "",
+      birthday: profile?.birthday || null,
+      avatar: profile?.avatar || null,
+      createdAt: user.createdAt,
+    };
+
+    return res.status(200).json(formattedUser);
+  } catch (error) {
+    console.error("Error in getAdminUser:", error);
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
+  }
+};
+
+const createAdminUser = async (req, res) => {
+  try {
+    const bcrypt = require("bcrypt");
+    const { v4: uuidv4 } = require("uuid");
+
+    // Validation - chỉ bắt buộc username và password
+    if (!req.body.username || !req.body.password) {
+      return res.status(400).json({
+        message: "Thiếu thông tin: username và password là bắt buộc",
+      });
+    }
+
+    // Kiểm tra username đã tồn tại
+    const existingUser = await User.findOne({
+      where: { username: req.body.username },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "Username đã tồn tại" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+
+    const role = req.body.role || "USER";
+
+    // Validate role
+    if (!["SUPER_ADMIN", "ADMIN", "USER"].includes(role)) {
+      return res.status(400).json({
+        message: "Role không hợp lệ. Chỉ chấp nhận: SUPER_ADMIN, ADMIN, USER",
+      });
+    }
+
+    let profileId;
+    let profile;
+
+    if (role === "SUPER_ADMIN" || role === "ADMIN") {
+      // Tạo Commander cho SUPER_ADMIN và ADMIN
+      const newCommander = await Commander.create({
+        id: uuidv4(),
+        commanderId: "",
+        fullName: req.body.fullName || req.body.username, // Dùng username nếu không có fullName
+        unit: req.body.unit || "Chưa phân công", // Giá trị mặc định
+        birthday: req.body.birthday || null,
+        avatar:
+          req.body.avatar ||
+          "https://i.pinimg.com/736x/d4/a1/ff/d4a1ff9d0f243e50062e2b21f2f2496d.jpg",
+        phoneNumber: "",
+        email: "",
+        gender: "",
+        rank: "",
+        positionGovernment: "",
+        positionParty: "",
+      });
+      profileId = newCommander.id;
+      profile = newCommander;
+    } else {
+      // Tạo Student cho USER
+      const newStudent = await Student.create({
+        id: uuidv4(),
+        studentId: "",
+        fullName: req.body.fullName || req.body.username, // Dùng username nếu không có fullName
+        unit: req.body.unit || "Chưa phân công", // Giá trị mặc định
+        birthday: req.body.birthday || null,
+        avatar:
+          req.body.avatar ||
+          "https://i.pinimg.com/736x/81/09/3a/81093a0429e25b0ff579fa41aa96c421.jpg",
+        phoneNumber: "",
+        email: "",
+        gender: "",
+        ethnicity: "",
+        religion: "",
+        hometown: "",
+        placeOfBirth: "",
+        currentAddress: "",
+      });
+      profileId = newStudent.id;
+      profile = newStudent;
+    }
+
+    // Tạo User - chỉ dùng role để xác định quyền
+    const newUser = await User.create({
+      id: uuidv4(),
+      username: req.body.username,
+      password: hashedPassword,
+      isAdmin: role === "SUPER_ADMIN" || role === "ADMIN", // Backward compatibility
+      role: role,
+      commanderId:
+        role === "SUPER_ADMIN" || role === "ADMIN" ? profileId : null,
+      studentId: role === "USER" ? profileId : null,
+    });
+
+    // Format response
+    const formattedUser = {
+      id: newUser.id,
+      username: newUser.username,
+      role: newUser.role,
+      fullName: profile.fullName,
+      unit: profile.unit,
+      birthday: profile.birthday,
+      avatar: profile.avatar,
+      createdAt: newUser.createdAt,
+    };
+
+    return res.status(201).json({
+      message: `Tạo tài khoản ${role} thành công`,
+      user: formattedUser,
+    });
+  } catch (error) {
+    console.error("Error in createAdminUser:", error);
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
+  }
+};
+
+const updateAdminUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      include: [{ model: Commander }, { model: Student }],
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User không tồn tại" });
+    }
+
+    // Kiểm tra username mới nếu có thay đổi
+    if (req.body.username && req.body.username !== user.username) {
+      const existingUser = await User.findOne({
+        where: {
+          username: req.body.username,
+          id: { [Op.ne]: user.id },
+        },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({ message: "Username đã tồn tại" });
+      }
+
+      // Cập nhật username
+      await user.update({ username: req.body.username });
+    }
+
+    // Cập nhật role nếu có - validate trước
+    if (req.body.role && req.body.role !== user.role) {
+      if (!["SUPER_ADMIN", "ADMIN", "USER"].includes(req.body.role)) {
+        return res.status(400).json({
+          message: "Role không hợp lệ. Chỉ chấp nhận: SUPER_ADMIN, ADMIN, USER",
+        });
+      }
+
+      // Cập nhật role và isAdmin
+      await user.update({
+        role: req.body.role,
+        isAdmin: req.body.role === "SUPER_ADMIN" || req.body.role === "ADMIN",
+      });
+    }
+
+    // Cập nhật password nếu có
+    if (req.body.password && req.body.password.trim() !== "") {
+      const bcrypt = require("bcrypt");
+      const hashedPassword = await bcrypt.hash(req.body.password, 10);
+      await user.update({ password: hashedPassword });
+    }
+
+    // Cập nhật thông tin profile - CHỈ CÁC FIELD CƠ BẢN
+    const profile = user.commander || user.student;
+    if (profile) {
+      await profile.update({
+        fullName: req.body.fullName || profile.fullName,
+        unit: req.body.unit || profile.unit,
+        birthday:
+          req.body.birthday !== undefined
+            ? req.body.birthday
+            : profile.birthday,
+        avatar: req.body.avatar || profile.avatar,
+      });
+    }
+
+    // Lấy thông tin user đã cập nhật
+    const updatedUser = await User.findByPk(user.id, {
+      include: [
+        {
+          model: Commander,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+        {
+          model: Student,
+          attributes: ["fullName", "unit", "birthday", "avatar"],
+        },
+      ],
+      attributes: ["id", "username", "role", "createdAt"],
+    });
+
+    const updatedProfile = updatedUser.commander || updatedUser.student;
+
+    // Format response
+    const formattedUser = {
+      id: updatedUser.id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      fullName: updatedProfile?.fullName || "",
+      unit: updatedProfile?.unit || "",
+      birthday: updatedProfile?.birthday || null,
+      avatar: updatedProfile?.avatar || null,
+      createdAt: updatedUser.createdAt,
+    };
+
+    return res.status(200).json({
+      message: "Cập nhật tài khoản thành công",
+      user: formattedUser,
+    });
+  } catch (error) {
+    console.error("Error in updateAdminUser:", error);
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
+  }
+};
+
+const deleteAdminUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      include: [{ model: Commander }, { model: Student }],
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User không tồn tại" });
+    }
+
+    // Không cho phép xóa SUPER_ADMIN (trừ khi người xóa cũng là SUPER_ADMIN)
+    if (user.role === "SUPER_ADMIN" && req.user.role !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        message: "Chỉ SUPER_ADMIN mới có thể xóa tài khoản SUPER_ADMIN khác",
+      });
+    }
+
+    // Không cho phép xóa chính mình
+    const requestingUserId = req.user.id; // Từ JWT token
+    if (user.id === requestingUserId) {
+      return res.status(400).json({ message: "Không thể xóa chính mình" });
+    }
+
+    // Xóa tất cả thông tin liên quan trước
+    if (user.commanderId) {
+      // Xóa Commander và tất cả thông tin liên quan
+      await Commander.destroy({ where: { id: user.commanderId } });
+    }
+
+    if (user.studentId) {
+      // Xóa tất cả thông tin liên quan đến Student
+      const studentId = user.studentId;
+
+      // Xóa các bảng liên quan đến student
+      await Promise.all([
+        // Xóa kết quả học tập
+        SemesterResult.destroy({ where: { studentId } }),
+        // Xóa thời khóa biểu
+        TimeTable.destroy({ where: { studentId } }),
+        // Xóa học phí
+        TuitionFee.destroy({ where: { studentId } }),
+        // Xóa thông báo
+        Notification.destroy({ where: { studentId } }),
+        // Xóa cắt cơm
+        CutRice.destroy({ where: { studentId } }),
+        // Xóa thành tích hàng năm
+        YearlyAchievement.destroy({ where: { studentId } }),
+        // Xóa kết quả hàng năm
+        YearlyResult.destroy({ where: { studentId } }),
+        // Xóa sáng kiến khoa học
+        ScientificInitiative.destroy({ where: { studentId } }),
+        // Xóa đề tài khoa học
+        ScientificTopic.destroy({ where: { studentId } }),
+      ]);
+
+      // Cuối cùng xóa Student
+      await Student.destroy({ where: { id: studentId } });
+    }
+
+    // Xóa User
+    await User.destroy({ where: { id: user.id } });
+
+    return res.status(200).json({ message: "Xóa tài khoản thành công" });
+  } catch (error) {
+    console.error("Error in deleteAdminUser:", error);
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
+  }
+};
+
 module.exports = {
   getUser,
   getCommanderDutySchedules,
@@ -240,4 +751,11 @@ module.exports = {
   deleteCommanderDutySchedule,
   getCommanderDutySchedule,
   getCommanderDutySchedulesCurrent,
+  // Admin user management
+  initializeSuperAdmin,
+  getAllAdminUsers,
+  getAdminUser,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
 };

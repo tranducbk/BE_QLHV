@@ -1,5 +1,5 @@
 module.exports = {
-  PORT: process.env.PORT || 8080,
+  PORT: process.env.PORT || 4000,
   MONGODB_ATLAS_URL: process.env.MONGODB_ATLAS_URL,
   DATABASE_URL: process.env.DATABASE_URL,
   PG_HOST: process.env.PG_HOST || "localhost",
