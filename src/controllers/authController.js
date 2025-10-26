@@ -229,6 +229,7 @@ const Login = async (req, res) => {
     const cookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
+      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
       path: "/",
       maxAge: 15 * 60 * 1000, // 15 phút
     };
@@ -236,6 +237,7 @@ const Login = async (req, res) => {
     const refreshCookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
+      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
@@ -407,6 +409,7 @@ const refreshAccessToken = async (req, res) => {
     const cookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
+      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
       path: "/",
       maxAge: 15 * 60 * 1000, // 15 phút
     };
@@ -414,6 +417,7 @@ const refreshAccessToken = async (req, res) => {
     const refreshCookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
+      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };

@@ -30,10 +30,11 @@ const corsOptions = {
       callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true,
+  credentials: true, // Cho phép gửi cookies
   optionsSuccessStatus: 200,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "token", "x-access-token"],
+  allowedHeaders: ["Content-Type", "Authorization", "token", "x-access-token", "Cookie"],
+  exposedHeaders: ["Set-Cookie"], // Cho phép frontend đọc Set-Cookie header
 };
 
 app.use(cors(corsOptions));
