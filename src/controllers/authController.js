@@ -219,29 +219,36 @@ const Login = async (req, res) => {
 
     console.log("🍪 Setting cookies for user:", user.username);
     console.log("🍪 Environment:", process.env.NODE_ENV);
-    console.log("🍪 SameSite: none (always for cross-origin)");
-    console.log("🍪 Secure: true (required for SameSite: none)");
-    console.log("🍪 Domain: undefined (no domain restriction)");
+    console.log("🍪 Secure:", process.env.NODE_ENV === "production");
+    console.log(
+      "🍪 SameSite:",
+      process.env.NODE_ENV === "production" ? "none" : "lax"
+    );
+    console.log("🍪 Request origin:", req.headers.origin);
+    console.log("🍪 Request host:", req.headers.host);
+
+    // Cookie settings đơn giản - tương thích với tất cả browser
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      path: "/",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
+      maxAge: 15 * 60 * 1000, // 15 phút
+    };
+
+    const refreshCookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      path: "/",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    };
 
     // Lưu access token vào httpOnly cookie
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: true, // Bắt buộc true cho SameSite: "none"
-      path: "/",
-      sameSite: "none", // Luôn "none" cho cross-origin
-      maxAge: 15 * 60 * 1000, // 15 phút
-      domain: undefined, // Không set domain để hoạt động trên tất cả máy
-    });
+    res.cookie("accessToken", accessToken, cookieOptions);
 
     // Lưu refresh token vào httpOnly cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true, // Bắt buộc true cho SameSite: "none"
-      path: "/",
-      sameSite: "none", // Luôn "none" cho cross-origin
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      domain: undefined, // Không set domain để hoạt động trên tất cả máy
-    });
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
     const { password, refreshToken: _, ...other } = user.toJSON();
     // Không trả token về client (đã lưu trong httpOnly cookie)
@@ -377,25 +384,28 @@ const refreshAccessToken = async (req, res) => {
     // Lưu refreshToken mới vào database (vô hiệu hóa token cũ)
     await user.update({ refreshToken: newRefreshToken });
 
-    // Lưu access token vào httpOnly cookie
-    res.cookie("accessToken", newAccessToken, {
+    // Cookie settings đơn giản - tương thích với tất cả browser
+    const cookieOptions = {
       httpOnly: true,
-      secure: true, // Bắt buộc true cho SameSite: "none"
+      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
       path: "/",
-      sameSite: "none", // Luôn "none" cho cross-origin
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
       maxAge: 15 * 60 * 1000, // 15 phút
-      domain: undefined, // Không set domain để hoạt động trên tất cả máy
-    });
+    };
+
+    const refreshCookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      path: "/",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    };
+
+    // Lưu access token vào httpOnly cookie
+    res.cookie("accessToken", newAccessToken, cookieOptions);
 
     // Lưu refresh token mới vào httpOnly cookie
-    res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: true, // Bắt buộc true cho SameSite: "none"
-      path: "/",
-      sameSite: "none", // Luôn "none" cho cross-origin
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-      domain: undefined, // Không set domain để hoạt động trên tất cả máy
-    });
+    res.cookie("refreshToken", newRefreshToken, refreshCookieOptions);
 
     // Không trả token về client (đã lưu trong httpOnly cookie)
     return res.status(200).json({ message: "Token đã được làm mới" });
