@@ -1,8 +1,16 @@
 const jwt = require("jsonwebtoken");
 
 const verifyToken = (req, res, next) => {
-  // Đọc accessToken từ httpOnly cookie
-  const accessToken = req.cookies?.accessToken;
+  // Đọc accessToken từ httpOnly cookie (ưu tiên) hoặc Authorization header (fallback)
+  let accessToken = req.cookies?.accessToken;
+
+  // Fallback: Nếu không có cookie, kiểm tra Authorization header
+  if (!accessToken) {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      accessToken = authHeader.substring(7); // Bỏ "Bearer " prefix
+    }
+  }
 
   if (!accessToken) {
     return res.status(401).json("Bạn chưa đăng nhập");
@@ -26,7 +34,16 @@ const verifyToken = (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-  const accessToken = req.cookies?.accessToken;
+  // Đọc accessToken từ httpOnly cookie (ưu tiên) hoặc Authorization header (fallback)
+  let accessToken = req.cookies?.accessToken;
+
+  // Fallback: Nếu không có cookie, kiểm tra Authorization header
+  if (!accessToken) {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      accessToken = authHeader.substring(7); // Bỏ "Bearer " prefix
+    }
+  }
 
   if (!accessToken) return res.status(401).json("Không tìm thấy token");
 
@@ -47,7 +64,16 @@ const isAdmin = (req, res, next) => {
 };
 
 const isSuperAdmin = (req, res, next) => {
-  const accessToken = req.cookies?.accessToken;
+  // Đọc accessToken từ httpOnly cookie (ưu tiên) hoặc Authorization header (fallback)
+  let accessToken = req.cookies?.accessToken;
+
+  // Fallback: Nếu không có cookie, kiểm tra Authorization header
+  if (!accessToken) {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      accessToken = authHeader.substring(7); // Bỏ "Bearer " prefix
+    }
+  }
 
   if (!accessToken) return res.status(401).json("Không tìm thấy token");
 

@@ -360,8 +360,19 @@ const Logout = async (req, res) => {
  */
 const refreshAccessToken = async (req, res) => {
   try {
-    // Lấy refresh token từ cookie
-    const refreshToken = req.cookies?.refreshToken;
+    // Lấy refresh token từ cookie (ưu tiên) hoặc từ request body (fallback cho localStorage)
+    let refreshToken = req.cookies?.refreshToken;
+
+    // Fallback: Nếu không có cookie, lấy từ request body hoặc Authorization header
+    if (!refreshToken) {
+      refreshToken = req.body.refreshToken;
+    }
+    if (!refreshToken) {
+      const authHeader = req.headers.authorization || req.headers.Authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        refreshToken = authHeader.substring(7);
+      }
+    }
 
     if (!refreshToken) {
       return res.status(401).json({ message: "Refresh token không tồn tại" });
