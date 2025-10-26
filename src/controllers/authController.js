@@ -151,7 +151,6 @@ const Register = async (req, res) => {
   }
 };
 
-global.accessTokenList = [];
 /**
  * @swagger
  * /user/login:
@@ -193,27 +192,52 @@ const Login = async (req, res) => {
       return res.status(404).json("Mật khẩu không đúng");
     }
 
+    // Access Token: 15 phút (ngắn, an toàn)
     const accessToken = jwt.sign(
       {
         id: user.id,
         admin: user.isAdmin,
         role: user.role || (user.isAdmin ? "ADMIN" : "USER"),
       },
-      process.env.JWT_SECRET || "your-super-secret-jwt-key-here",
-      { expiresIn: "2h" }
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
     );
 
-    global.accessTokenList.push(accessToken);
+    // Refresh Token: 7 ngày (dài, lưu trong httpOnly cookie)
+    const refreshToken = jwt.sign(
+      {
+        id: user.id,
+        admin: user.isAdmin,
+        role: user.role || (user.isAdmin ? "ADMIN" : "USER"),
+      },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
 
+    // Lưu refreshToken vào database để có thể revoke
+    await user.update({ refreshToken });
+
+    // Lưu access token vào httpOnly cookie
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       path: "/",
       sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 phút
     });
 
-    const { password, ...other } = user.toJSON();
-    res.status(200).json({ other, accessToken });
+    // Lưu refresh token vào httpOnly cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    });
+
+    const { password, refreshToken: _, ...other } = user.toJSON();
+    // Không trả token về client (đã lưu trong httpOnly cookie)
+    res.status(200).json({ user: other });
   } catch (error) {
     res
       .status(500)
@@ -264,6 +288,15 @@ const changePassword = async (req, res) => {
 
 const Logout = async (req, res) => {
   try {
+    // Xóa refreshToken khỏi database (revoke token)
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+      const decoded = jwt.decode(refreshToken);
+      if (decoded?.id) {
+        await User.update({ refreshToken: null }, { where: { id: decoded.id } });
+      }
+    }
+
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
     return res.status(200).json("Đăng xuất thành công");
@@ -272,4 +305,84 @@ const Logout = async (req, res) => {
   }
 };
 
-module.exports = { Register, Login, Logout, changePassword };
+/**
+ * Refresh access token using refresh token (với token rotation)
+ */
+const refreshAccessToken = async (req, res) => {
+  try {
+    // Lấy refresh token từ cookie
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token không tồn tại" });
+    }
+
+    // Verify refresh token
+    const decoded = jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET
+    );
+
+    // Kiểm tra trong database: Token có bị revoke không?
+    const user = await User.findByPk(decoded.id);
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(401).json({ message: "Refresh token không hợp lệ hoặc đã bị thu hồi" });
+    }
+
+    // Tạo access token mới
+    const newAccessToken = jwt.sign(
+      {
+        id: decoded.id,
+        admin: decoded.admin,
+        role: decoded.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    // Tạo refresh token mới (Token Rotation)
+    const newRefreshToken = jwt.sign(
+      {
+        id: decoded.id,
+        admin: decoded.admin,
+        role: decoded.role,
+      },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Lưu refreshToken mới vào database (vô hiệu hóa token cũ)
+    await user.update({ refreshToken: newRefreshToken });
+
+    // Lưu access token vào httpOnly cookie
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000, // 15 phút
+    });
+
+    // Lưu refresh token mới vào httpOnly cookie
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+    });
+
+    // Không trả token về client (đã lưu trong httpOnly cookie)
+    return res.status(200).json({ message: "Token đã được làm mới" });
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      // Refresh token hết hạn -> yêu cầu đăng nhập lại
+      res.clearCookie("refreshToken");
+      res.clearCookie("accessToken");
+      return res.status(401).json({ message: "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại" });
+    }
+    return res.status(401).json({ message: "Refresh token không hợp lệ" });
+  }
+};
+
+module.exports = { Register, Login, Logout, changePassword, refreshAccessToken };

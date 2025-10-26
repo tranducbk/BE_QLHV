@@ -14,7 +14,7 @@ const corsOptions = {
   origin: [
     "https://qlhv.vercel.app",
     "http://localhost:3000",
-    "http://localhost:3001",
+    "http://localhost:3002",
   ],
   credentials: true,
   optionsSuccessStatus: 200,

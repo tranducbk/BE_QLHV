@@ -769,8 +769,40 @@ const deleteAdminUser = async (req, res) => {
   }
 };
 
+/**
+ * Get current logged-in user info
+ * Dùng để Frontend lấy thông tin user từ token (httpOnly cookie)
+ */
+const getCurrentUser = async (req, res) => {
+  try {
+    // req.user đã được set bởi verifyToken middleware
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Chưa đăng nhập" });
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ["password", "refreshToken"] },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy user" });
+    }
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error("Error in getCurrentUser:", error);
+    return res.status(500).json({
+      message: "Lỗi server",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getUser,
+  getCurrentUser, // Thêm endpoint mới
   getCommanderDutySchedules,
   getCommanderDutyScheduleByUserId,
   updateCommanderDutySchedule,

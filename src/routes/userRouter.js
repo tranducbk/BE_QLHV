@@ -1,12 +1,15 @@
 const router = require("express").Router();
+const rateLimit = require("express-rate-limit");
 const {
   Register,
   Login,
   Logout,
   changePassword,
+  refreshAccessToken,
 } = require("../controllers/authController");
 const {
   getUser,
+  getCurrentUser,
   updateCommanderDutySchedule,
   createCommanderDutySchedule,
   deleteCommanderDutySchedule,
@@ -24,12 +27,22 @@ const {
 const { resetPassword, forgotPassword } = require("../services/forgotPassword");
 const { verifyToken, isAdmin, isSuperAdmin } = require("../middlewares/verify");
 
+// Rate limiter cho refresh token endpoint
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 5, // Tối đa 5 requests mỗi 15 phút
+  message: "Quá nhiều yêu cầu làm mới token, vui lòng thử lại sau",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Auth with user
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
 router.post("/register", Register);
 router.post("/login", Login);
 router.post("/logout", verifyToken, Logout);
+router.post("/refresh-token", refreshLimiter, refreshAccessToken); // Thêm rate limiting
 
 //CRUD with commander_duty_schedule
 router.get("/commanderDutySchedules", verifyToken, getCommanderDutySchedules);
@@ -62,6 +75,9 @@ router.get(
   verifyToken,
   getCommanderDutySchedulesCurrent
 );
+
+// Get current user (từ token trong cookie)
+router.get("/me", verifyToken, getCurrentUser);
 
 // CRUD with user
 router.put("/:userId", verifyToken, changePassword);

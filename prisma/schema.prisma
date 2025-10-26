@@ -310,18 +310,19 @@ model universities {
 }
 
 model users {
-  id          String      @id @db.Uuid
-  username    String      @unique @db.VarChar(255)
-  password    String      @db.VarChar(255)
-  isAdmin     Boolean?    @default(false)
-  role        String?     @default("USER") @db.VarChar(50) // SUPER_ADMIN, ADMIN, USER
-  studentId   String?     @db.Uuid
-  commanderId String?     @db.Uuid
-  createdAt   DateTime?   @db.Timestamptz(6)
-  updatedAt   DateTime?   @db.Timestamptz(6)
-  deletedAt   DateTime?   @db.Timestamptz(6)
-  commanders  commanders? @relation(fields: [commanderId], references: [id])
-  students    students?   @relation(fields: [studentId], references: [id])
+  id           String      @id @db.Uuid
+  username     String      @unique @db.VarChar(255)
+  password     String      @db.VarChar(255)
+  isAdmin      Boolean?    @default(false)
+  role         String?     @default("USER") @db.VarChar(50) // SUPER_ADMIN, ADMIN, USER
+  refreshToken String?     // Token để refresh accessToken
+  studentId    String?     @db.Uuid
+  commanderId  String?     @db.Uuid
+  createdAt    DateTime?   @db.Timestamptz(6)
+  updatedAt    DateTime?   @db.Timestamptz(6)
+  deletedAt    DateTime?   @db.Timestamptz(6)
+  commanders   commanders? @relation(fields: [commanderId], references: [id])
+  students     students?   @relation(fields: [studentId], references: [id])
 }
 
 model yearly_achievements {
