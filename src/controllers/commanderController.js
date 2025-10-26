@@ -312,16 +312,35 @@ const deleteStudent = async (req, res) => {
     // Lưu classId để cập nhật số lượng sinh viên
     const classId = student.classId;
 
+    // Lấy tất cả yearlyAchievementId của student để xóa scientific_initiatives và scientific_topics
+    const yearlyAchievements = await YearlyAchievement.findAll({
+      where: { studentId },
+      attributes: ["id"],
+    });
+    const yearlyAchievementIds = yearlyAchievements.map((ya) => ya.id);
+
     // Xóa dữ liệu liên quan (FK cascades đã cấu hình trong models_sql)
     await Notification.destroy({ where: { studentId } });
     await TuitionFee.destroy({ where: { studentId } });
     await TimeTable.destroy({ where: { studentId } });
     await Achievement.destroy({ where: { studentId } });
-    await YearlyAchievement.destroy({ where: { studentId } });
     await AchievementProfile.destroy({ where: { studentId } });
     await SemesterResult.destroy({ where: { studentId } });
     await YearlyResult.destroy({ where: { studentId } });
     await CutRice.destroy({ where: { studentId } });
+
+    // Xóa scientific initiatives và topics (thông qua yearlyAchievementId)
+    if (yearlyAchievementIds.length > 0) {
+      await ScientificInitiative.destroy({
+        where: { yearlyAchievementId: yearlyAchievementIds },
+      });
+      await ScientificTopic.destroy({
+        where: { yearlyAchievementId: yearlyAchievementIds },
+      });
+    }
+
+    // Xóa yearly achievements sau khi đã xóa scientific initiatives và topics
+    await YearlyAchievement.destroy({ where: { studentId } });
 
     // Xóa user liên quan
     await User.destroy({ where: { studentId } });
