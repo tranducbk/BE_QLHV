@@ -30,16 +30,24 @@ const { verifyToken, isAdmin, isSuperAdmin } = require("../middlewares/verify");
 // Rate limiter cho refresh token endpoint - Tăng limit cho production
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 500, // Tăng lên 50 requests mỗi 15 phút cho production
+  max: 500, // Tăng lên 500 requests mỗi 15 phút cho production
   message: "Quá nhiều yêu cầu làm mới token, vui lòng thử lại sau",
   standardHeaders: true,
   legacyHeaders: false,
+  // Cấu hình cho production deployment
+  trustProxy: true,
   // Thêm skip cho development
   skip: (req) => {
     // Skip rate limiting trong development
     return process.env.NODE_ENV === "development";
   },
+  // Debug logs
+  onLimitReached: (req, res, options) => {
+    console.log("⚠️ Rate limit reached for refresh token:", req.ip);
+  },
 });
+
+console.log("🔧 Rate limiter configured with trustProxy:", true);
 
 // Auth with user
 router.post("/forgot-password", forgotPassword);

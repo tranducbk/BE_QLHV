@@ -14,14 +14,14 @@ const corsOptions = {
   origin: function (origin, callback) {
     // Cho phép requests không có origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       "https://qlhv.vercel.app",
       "https://fe-student-manager.vercel.app", // Thêm domain mới nếu có
       "http://localhost:3000",
       "http://localhost:3002",
     ];
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -39,6 +39,10 @@ app.use(cors(corsOptions));
 
 // Handle preflight requests
 app.options("*", cors(corsOptions));
+
+// Trust proxy for production deployment (Render.com, Heroku, etc.)
+app.set("trust proxy", 1);
+console.log("🔧 Trust proxy enabled for production deployment");
 
 app.use(express.json());
 app.use(bodyParser.json());
