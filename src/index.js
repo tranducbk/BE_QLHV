@@ -24,9 +24,10 @@ const corsOptions = {
     ];
 
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log("✅ CORS allowed origin:", origin);
       callback(null, true);
     } else {
-      console.log("CORS blocked origin:", origin);
+      console.log("❌ CORS blocked origin:", origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -35,12 +36,42 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "token", "x-access-token", "Cookie"],
   exposedHeaders: ["Set-Cookie"], // Cho phép frontend đọc Set-Cookie header
+  preflightContinue: false, // Pass preflight response to next handler
+  maxAge: 86400, // Cache preflight for 24 hours
 };
 
+// Apply CORS globally
 app.use(cors(corsOptions));
 
-// Handle preflight requests
+// Explicitly handle all OPTIONS requests for preflight
 app.options("*", cors(corsOptions));
+
+// Add additional CORS headers middleware as backup
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "https://qlhv.vercel.app",
+    "https://fe-student-manager.vercel.app",
+    "https://fe-qlhv-ahnzq9nap-tran-ducs-projects-6b0bdbb3.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3002",
+  ];
+
+  if (allowedOrigins.includes(origin) || !origin) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, token, x-access-token, Cookie");
+    res.header("Access-Control-Expose-Headers", "Set-Cookie");
+  }
+
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 // Trust proxy for production deployment (Render.com, Heroku, etc.)
 app.set("trust proxy", 1);
