@@ -11,11 +11,24 @@ const app = express();
 
 // Cấu hình CORS chi tiết để cho phép Frontend truy cập
 const corsOptions = {
-  origin: [
-    "https://qlhv.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:3002",
-  ],
+  origin: function (origin, callback) {
+    // Cho phép requests không có origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      "https://qlhv.vercel.app",
+      "https://fe-student-manager.vercel.app", // Thêm domain mới nếu có
+      "http://localhost:3000",
+      "http://localhost:3002",
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log("CORS blocked origin:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

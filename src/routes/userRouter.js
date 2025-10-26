@@ -27,13 +27,18 @@ const {
 const { resetPassword, forgotPassword } = require("../services/forgotPassword");
 const { verifyToken, isAdmin, isSuperAdmin } = require("../middlewares/verify");
 
-// Rate limiter cho refresh token endpoint
+// Rate limiter cho refresh token endpoint - Tăng limit cho production
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 5, // Tối đa 5 requests mỗi 15 phút
+  max: 500, // Tăng lên 50 requests mỗi 15 phút cho production
   message: "Quá nhiều yêu cầu làm mới token, vui lòng thử lại sau",
   standardHeaders: true,
   legacyHeaders: false,
+  // Thêm skip cho development
+  skip: (req) => {
+    // Skip rate limiting trong development
+    return process.env.NODE_ENV === "development";
+  },
 });
 
 // Auth with user
