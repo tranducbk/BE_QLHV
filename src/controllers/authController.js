@@ -217,12 +217,19 @@ const Login = async (req, res) => {
     // Lưu refreshToken vào database để có thể revoke
     await user.update({ refreshToken });
 
+    console.log("🍪 Setting cookies for user:", user.username);
+    console.log("🍪 Environment:", process.env.NODE_ENV);
+    console.log(
+      "🍪 SameSite:",
+      process.env.NODE_ENV === "production" ? "none" : "lax"
+    );
+
     // Lưu access token vào httpOnly cookie
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 15 * 60 * 1000, // 15 phút
     });
 
@@ -231,7 +238,7 @@ const Login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
@@ -293,12 +300,26 @@ const Logout = async (req, res) => {
     if (refreshToken) {
       const decoded = jwt.decode(refreshToken);
       if (decoded?.id) {
-        await User.update({ refreshToken: null }, { where: { id: decoded.id } });
+        await User.update(
+          { refreshToken: null },
+          { where: { id: decoded.id } }
+        );
       }
     }
 
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    // Clear cookies với cùng options như khi set
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
     return res.status(200).json("Đăng xuất thành công");
   } catch (error) {
     return res.status(500).json(error);
@@ -318,15 +339,14 @@ const refreshAccessToken = async (req, res) => {
     }
 
     // Verify refresh token
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET
-    );
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
 
     // Kiểm tra trong database: Token có bị revoke không?
     const user = await User.findByPk(decoded.id);
     if (!user || user.refreshToken !== refreshToken) {
-      return res.status(401).json({ message: "Refresh token không hợp lệ hoặc đã bị thu hồi" });
+      return res
+        .status(401)
+        .json({ message: "Refresh token không hợp lệ hoặc đã bị thu hồi" });
     }
 
     // Tạo access token mới
@@ -359,7 +379,7 @@ const refreshAccessToken = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 15 * 60 * 1000, // 15 phút
     });
 
@@ -368,7 +388,7 @@ const refreshAccessToken = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      sameSite: "strict",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     });
 
@@ -377,12 +397,30 @@ const refreshAccessToken = async (req, res) => {
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       // Refresh token hết hạn -> yêu cầu đăng nhập lại
-      res.clearCookie("refreshToken");
-      res.clearCookie("accessToken");
-      return res.status(401).json({ message: "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại" });
+      res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
+      res.clearCookie("accessToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
+      return res.status(401).json({
+        message: "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
+      });
     }
     return res.status(401).json({ message: "Refresh token không hợp lệ" });
   }
 };
 
-module.exports = { Register, Login, Logout, changePassword, refreshAccessToken };
+module.exports = {
+  Register,
+  Login,
+  Logout,
+  changePassword,
+  refreshAccessToken,
+};
