@@ -217,17 +217,25 @@ const Login = async (req, res) => {
     // Lưu refreshToken vào database để có thể revoke
     await user.update({ refreshToken });
 
-    // Cookie settings đơn giản - không dùng sameSite
+    // Cookie settings cho cloud deployment
+    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+    const isProduction = process.env.NODE_ENV === "production";
+
+    console.log("🌐 Request secure:", req.secure);
+    console.log("🌐 X-Forwarded-Proto:", req.headers["x-forwarded-proto"]);
+    console.log("🌐 Is HTTPS:", isHttps);
+    console.log("🌐 Is Production:", isProduction);
+
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      secure: isHttps, // Chỉ secure khi HTTPS
       path: "/",
       maxAge: 15 * 60 * 1000, // 15 phút
     };
 
     const refreshCookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      secure: isHttps, // Chỉ secure khi HTTPS
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
@@ -238,9 +246,30 @@ const Login = async (req, res) => {
     // Lưu refresh token vào httpOnly cookie
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
+    console.log("🍪 Cookies set successfully");
+    console.log("🍪 Response headers:", res.getHeaders());
+    console.log("🍪 Set-Cookie headers:", res.getHeaders()["set-cookie"]);
+
+    // Kiểm tra cookies có được set không
+    const setCookieHeaders = res.getHeaders()["set-cookie"];
+    if (setCookieHeaders) {
+      console.log("✅ Cookies được set:", setCookieHeaders.length, "cookies");
+      setCookieHeaders.forEach((cookie, index) => {
+        console.log(`🍪 Cookie ${index + 1}:`, cookie);
+      });
+    } else {
+      console.log("❌ Không có cookies được set!");
+    }
+
     const { password, refreshToken: _, ...other } = user.toJSON();
-    // Không trả token về client (đã lưu trong httpOnly cookie)
-    res.status(200).json({ user: other });
+
+    // Fallback: Trả tokens về frontend nếu cookies không hoạt động
+    // Frontend sẽ kiểm tra cookies và fallback về localStorage nếu cần
+    res.status(200).json({
+      user: other,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    });
   } catch (error) {
     res
       .status(500)
@@ -372,17 +401,19 @@ const refreshAccessToken = async (req, res) => {
     // Lưu refreshToken mới vào database (vô hiệu hóa token cũ)
     await user.update({ refreshToken: newRefreshToken });
 
-    // Cookie settings đơn giản - không dùng sameSite
+    // Cookie settings cho cloud deployment
+    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      secure: isHttps, // Chỉ secure khi HTTPS
       path: "/",
       maxAge: 15 * 60 * 1000, // 15 phút
     };
 
     const refreshCookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+      secure: isHttps, // Chỉ secure khi HTTPS
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
@@ -393,8 +424,12 @@ const refreshAccessToken = async (req, res) => {
     // Lưu refresh token mới vào httpOnly cookie
     res.cookie("refreshToken", newRefreshToken, refreshCookieOptions);
 
-    // Không trả token về client (đã lưu trong httpOnly cookie)
-    return res.status(200).json({ message: "Token đã được làm mới" });
+    // Fallback: Trả tokens về frontend nếu cookies không hoạt động
+    return res.status(200).json({
+      message: "Token đã được làm mới",
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    });
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       // Refresh token hết hạn -> yêu cầu đăng nhập lại
