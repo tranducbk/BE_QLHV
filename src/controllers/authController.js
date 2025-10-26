@@ -221,52 +221,27 @@ const Login = async (req, res) => {
     const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
     const isProduction = process.env.NODE_ENV === "production";
 
-    console.log("🌐 Request secure:", req.secure);
-    console.log("🌐 X-Forwarded-Proto:", req.headers["x-forwarded-proto"]);
-    console.log("🌐 Is HTTPS:", isHttps);
-    console.log("🌐 Is Production:", isProduction);
-
     const cookieOptions = {
       httpOnly: true,
-      secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
+      secure: isHttps,
+      sameSite: isProduction ? "none" : "lax",
       path: "/",
-      maxAge: 15 * 60 * 1000, // 15 phút
+      maxAge: 15 * 60 * 1000,
     };
 
     const refreshCookieOptions = {
       httpOnly: true,
-      secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
+      secure: isHttps,
+      sameSite: isProduction ? "none" : "lax",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     };
 
-    // Lưu access token vào httpOnly cookie
     res.cookie("accessToken", accessToken, cookieOptions);
-
-    // Lưu refresh token vào httpOnly cookie
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-
-    console.log("🍪 Cookies set successfully");
-    console.log("🍪 Response headers:", res.getHeaders());
-    console.log("🍪 Set-Cookie headers:", res.getHeaders()["set-cookie"]);
-
-    // Kiểm tra cookies có được set không
-    const setCookieHeaders = res.getHeaders()["set-cookie"];
-    if (setCookieHeaders) {
-      console.log("✅ Cookies được set:", setCookieHeaders.length, "cookies");
-      setCookieHeaders.forEach((cookie, index) => {
-        console.log(`🍪 Cookie ${index + 1}:`, cookie);
-      });
-    } else {
-      console.log("❌ Không có cookies được set!");
-    }
 
     const { password, refreshToken: _, ...other } = user.toJSON();
 
-    // Fallback: Trả tokens về frontend nếu cookies không hoạt động
-    // Frontend sẽ kiểm tra cookies và fallback về localStorage nếu cần
     res.status(200).json({
       user: other,
       accessToken: accessToken,
@@ -420,7 +395,7 @@ const refreshAccessToken = async (req, res) => {
     const cookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
+      sameSite: isProduction ? "none" : "lax", // None cho cross-origin, Lax cho localhost
       path: "/",
       maxAge: 15 * 60 * 1000, // 15 phút
     };
@@ -428,7 +403,7 @@ const refreshAccessToken = async (req, res) => {
     const refreshCookieOptions = {
       httpOnly: true,
       secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isHttps ? "none" : "lax", // "none" cho cross-origin khi HTTPS
+      sameSite: isProduction ? "none" : "lax", // None cho cross-origin, Lax cho localhost
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
