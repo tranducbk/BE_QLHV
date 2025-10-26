@@ -223,6 +223,10 @@ const Login = async (req, res) => {
       "🍪 SameSite:",
       process.env.NODE_ENV === "production" ? "none" : "lax"
     );
+    console.log(
+      "🍪 Domain:",
+      process.env.NODE_ENV === "production" ? ".onrender.com" : "undefined"
+    );
 
     // Lưu access token vào httpOnly cookie
     res.cookie("accessToken", accessToken, {
@@ -231,6 +235,8 @@ const Login = async (req, res) => {
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 15 * 60 * 1000, // 15 phút
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined, // Domain cho production
     });
 
     // Lưu refresh token vào httpOnly cookie
@@ -240,6 +246,8 @@ const Login = async (req, res) => {
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined, // Domain cho production
     });
 
     const { password, refreshToken: _, ...other } = user.toJSON();
@@ -313,12 +321,16 @@ const Logout = async (req, res) => {
       secure: process.env.NODE_ENV === "production",
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined,
     });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined,
     });
     return res.status(200).json("Đăng xuất thành công");
   } catch (error) {
@@ -381,6 +393,8 @@ const refreshAccessToken = async (req, res) => {
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 15 * 60 * 1000, // 15 phút
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined, // Domain cho production
     });
 
     // Lưu refresh token mới vào httpOnly cookie
@@ -390,6 +404,8 @@ const refreshAccessToken = async (req, res) => {
       path: "/",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" cho cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+      domain:
+        process.env.NODE_ENV === "production" ? ".onrender.com" : undefined, // Domain cho production
     });
 
     // Không trả token về client (đã lưu trong httpOnly cookie)
@@ -402,12 +418,16 @@ const refreshAccessToken = async (req, res) => {
         secure: process.env.NODE_ENV === "production",
         path: "/",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        domain:
+          process.env.NODE_ENV === "production" ? ".onrender.com" : undefined,
       });
       res.clearCookie("accessToken", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         path: "/",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        domain:
+          process.env.NODE_ENV === "production" ? ".onrender.com" : undefined,
       });
       return res.status(401).json({
         message: "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
