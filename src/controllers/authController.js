@@ -217,22 +217,11 @@ const Login = async (req, res) => {
     // Lưu refreshToken vào database để có thể revoke
     await user.update({ refreshToken });
 
-    console.log("🍪 Setting cookies for user:", user.username);
-    console.log("🍪 Environment:", process.env.NODE_ENV);
-    console.log("🍪 Secure:", process.env.NODE_ENV === "production");
-    console.log(
-      "🍪 SameSite:",
-      process.env.NODE_ENV === "production" ? "none" : "lax"
-    );
-    console.log("🍪 Request origin:", req.headers.origin);
-    console.log("🍪 Request host:", req.headers.host);
-
-    // Cookie settings đơn giản - tương thích với tất cả browser
+    // Cookie settings đơn giản - không dùng sameSite
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
       path: "/",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
       maxAge: 15 * 60 * 1000, // 15 phút
     };
 
@@ -240,7 +229,6 @@ const Login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
       path: "/",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
 
@@ -384,12 +372,11 @@ const refreshAccessToken = async (req, res) => {
     // Lưu refreshToken mới vào database (vô hiệu hóa token cũ)
     await user.update({ refreshToken: newRefreshToken });
 
-    // Cookie settings đơn giản - tương thích với tất cả browser
+    // Cookie settings đơn giản - không dùng sameSite
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
       path: "/",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
       maxAge: 15 * 60 * 1000, // 15 phút
     };
 
@@ -397,7 +384,6 @@ const refreshAccessToken = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
       path: "/",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Flexible cho dev
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
     };
 
