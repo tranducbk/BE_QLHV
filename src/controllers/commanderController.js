@@ -3831,8 +3831,14 @@ const updateStudent = async (req, res) => {
 // Lấy tất cả điểm học tập của tất cả sinh viên
 const getAllStudentsGrades = async (req, res) => {
   try {
-    const { semester, schoolYear, page = 1, pageSize = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const { semester, schoolYear, page, pageSize } = req.query;
+
+    // Chỉ áp dụng phân trang nếu có tham số page hoặc pageSize
+    const usePagination = page || pageSize;
+    const parsedPage = page ? parseInt(page) : 1;
+    const parsedPageSize = pageSize ? parseInt(pageSize) : 10;
+    const skip = usePagination ? (parsedPage - 1) * parsedPageSize : 0;
+    const limit = usePagination ? parsedPageSize : undefined;
 
     // Kiểm tra xem có semester results nào trong DB không
     const totalSemesterResults = await SemesterResult.count();
@@ -3850,8 +3856,7 @@ const getAllStudentsGrades = async (req, res) => {
           required: false,
         },
       ],
-      offset: skip,
-      limit: parseInt(pageSize),
+      ...(usePagination && { offset: skip, limit: limit }),
     });
 
     // Load subjects từ subject_results table cho MỌI semester results
@@ -4045,17 +4050,18 @@ const getAllStudentsGrades = async (req, res) => {
       }
     }
 
-    const totalStudents = await Student.count();
-    const totalPages = Math.ceil(totalStudents / parseInt(pageSize));
-
-    if (req.query.page || req.query.pageSize) {
+    // Tính tổng số students để phân trang (chỉ khi có phân trang)
+    if (usePagination) {
+      const totalStudents = await Student.count();
+      const totalPages = Math.ceil(totalStudents / parsedPageSize);
       return res.status(200).json({
         learningResults: allLearningResults,
         totalPages,
-        currentPage: parseInt(page),
+        currentPage: parsedPage,
         totalStudents,
       });
     } else {
+      // Không có phân trang, trả về mảng tất cả kết quả
       return res.status(200).json(allLearningResults);
     }
   } catch (error) {
@@ -5928,10 +5934,16 @@ const getPartyRatings = async (req, res) => {
 // API lấy tất cả sinh viên cho xếp loại rèn luyện (bao gồm sinh viên mới)
 const getAllStudentsForTrainingRating = async (req, res) => {
   try {
-    const { schoolYear, page = 1, pageSize = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const { schoolYear, page, pageSize } = req.query;
 
-    // Lấy students với phân trang
+    // Chỉ áp dụng phân trang nếu có tham số page hoặc pageSize
+    const usePagination = page || pageSize;
+    const parsedPage = page ? parseInt(page) : 1;
+    const parsedPageSize = pageSize ? parseInt(pageSize) : 10;
+    const skip = usePagination ? (parsedPage - 1) * parsedPageSize : 0;
+    const limit = usePagination ? parsedPageSize : undefined;
+
+    // Lấy students với hoặc không có phân trang
     const students = await Student.findAll({
       include: [
         { model: University, attributes: ["universityName"] },
@@ -5945,8 +5957,7 @@ const getAllStudentsForTrainingRating = async (req, res) => {
           required: false,
         },
       ],
-      offset: skip,
-      limit: parseInt(pageSize),
+      ...(usePagination && { offset: skip, limit: limit }),
     });
 
     let trainingRatings = [];
@@ -6024,19 +6035,18 @@ const getAllStudentsForTrainingRating = async (req, res) => {
       }
     }
 
-    // Tính tổng số students để phân trang
-    const totalStudents = await Student.count();
-    const totalPages = Math.ceil(totalStudents / parseInt(pageSize));
-
-    // Kiểm tra nếu có tham số phân trang thì trả về object, không thì trả về mảng như cũ
-    if (req.query.page || req.query.pageSize) {
+    // Tính tổng số students để phân trang (chỉ khi có phân trang)
+    if (usePagination) {
+      const totalStudents = await Student.count();
+      const totalPages = Math.ceil(totalStudents / parsedPageSize);
       return res.status(200).json({
         trainingRatings,
         totalPages,
-        currentPage: parseInt(page),
+        currentPage: parsedPage,
         totalStudents,
       });
     } else {
+      // Không có phân trang, trả về mảng tất cả kết quả
       return res.status(200).json(trainingRatings);
     }
   } catch (error) {
@@ -6218,49 +6228,78 @@ const getWordTuitionFee = async (req, res) => {
       include: [
         { model: University, attributes: ["universityName"] },
         { model: ClassModel, attributes: ["className"] },
+        { model: TuitionFee, required: false },
       ],
     });
 
     let tuitionFees = [];
 
     students.forEach((student) => {
-      student.tuitionFee.forEach((tuitionFee) => {
-        tuitionFees.push({
-          id: tuitionFee.id,
-          studentId: student.id,
-          fullName: student.fullName,
-          university:
-            (student.university && student.university.universityName) || "",
-          unit: student.unit,
-          className: (student.class && student.class.className) || "",
-          totalAmount: tuitionFee.totalAmount,
-          semester: tuitionFee.semester,
-          schoolYear: tuitionFee.schoolYear,
-          content: tuitionFee.content,
-          status: tuitionFee.status,
+      if (student.tuitionFees && Array.isArray(student.tuitionFees)) {
+        student.tuitionFees.forEach((tuitionFee) => {
+          tuitionFees.push({
+            id: tuitionFee.id,
+            studentId: student.id,
+            fullName: student.fullName,
+            university:
+              (student.university && student.university.universityName) || "",
+            unit: student.unit,
+            className: (student.class && student.class.className) || "",
+            totalAmount: tuitionFee.totalAmount,
+            semester: tuitionFee.semester,
+            schoolYear: tuitionFee.schoolYear,
+            content: tuitionFee.content,
+            status: tuitionFee.status,
+          });
         });
-      });
+      }
     });
+
+    console.log("Total tuitionFees before filter:", tuitionFees.length);
+    console.log("Filter params:", {
+      semesterQuery,
+      schoolYearQuery,
+      unitQuery,
+    });
+    if (tuitionFees.length > 0) {
+      console.log("Sample tuitionFee:", {
+        semester: tuitionFees[0].semester,
+        schoolYear: tuitionFees[0].schoolYear,
+        unit: tuitionFees[0].unit,
+      });
+    }
 
     // Lọc theo học kỳ
     if (semesterQuery && semesterQuery !== "all") {
       const semesterArray = semesterQuery.split(",");
+      console.log("Filtering by semester:", semesterArray);
+      const beforeFilter = tuitionFees.length;
       tuitionFees = tuitionFees.filter((tuitionFee) => {
         return semesterArray.includes(tuitionFee.semester);
       });
+      console.log(
+        `After semester filter: ${beforeFilter} -> ${tuitionFees.length}`
+      );
     }
 
     // Lọc theo năm học
     if (schoolYearQuery && schoolYearQuery !== "all") {
       const schoolYearArray = schoolYearQuery.split(",");
+      console.log("Filtering by schoolYear:", schoolYearArray);
+      const beforeFilter = tuitionFees.length;
       tuitionFees = tuitionFees.filter((tuitionFee) => {
         return schoolYearArray.includes(tuitionFee.schoolYear);
       });
+      console.log(
+        `After schoolYear filter: ${beforeFilter} -> ${tuitionFees.length}`
+      );
     }
 
     // Lọc theo đơn vị
     if (unitQuery && unitQuery !== "all") {
       const unitArray = unitQuery.split(",");
+      console.log("Filtering by unit:", unitArray);
+      const beforeFilter = tuitionFees.length;
 
       tuitionFees = tuitionFees.filter((tuitionFee) => {
         const isIncluded = unitArray.some(
@@ -6273,6 +6312,9 @@ const getWordTuitionFee = async (req, res) => {
 
         return isIncluded;
       });
+      console.log(
+        `After unit filter: ${beforeFilter} -> ${tuitionFees.length}`
+      );
     }
 
     // Sắp xếp theo thứ tự từ L1 đến L6
@@ -6292,21 +6334,40 @@ const getWordTuitionFee = async (req, res) => {
       return aOrder - bOrder;
     });
 
+    console.log("Total tuitionFees after filter:", tuitionFees.length);
+
+    // Kiểm tra nếu không có dữ liệu
+    if (tuitionFees.length === 0) {
+      return res.status(404).json({
+        message: "Không có dữ liệu học phí phù hợp với bộ lọc",
+        success: false,
+      });
+    }
+
     // Tính tổng học phí và phân loại theo trạng thái
     const totalAmountSum = tuitionFees.reduce((sum, tuitionFee) => {
-      return sum + parseInt(tuitionFee.totalAmount.replace(/\./g, ""));
+      const amount = tuitionFee.totalAmount
+        ? String(tuitionFee.totalAmount).replace(/\./g, "")
+        : "0";
+      return sum + (parseInt(amount) || 0);
     }, 0);
 
     const paidAmountSum = tuitionFees
       .filter((tuitionFee) => tuitionFee.status === "Đã thanh toán")
       .reduce((sum, tuitionFee) => {
-        return sum + parseInt(tuitionFee.totalAmount.replace(/\./g, ""));
+        const amount = tuitionFee.totalAmount
+          ? String(tuitionFee.totalAmount).replace(/\./g, "")
+          : "0";
+        return sum + (parseInt(amount) || 0);
       }, 0);
 
     const unpaidAmountSum = tuitionFees
       .filter((tuitionFee) => tuitionFee.status === "Chưa thanh toán")
       .reduce((sum, tuitionFee) => {
-        return sum + parseInt(tuitionFee.totalAmount.replace(/\./g, ""));
+        const amount = tuitionFee.totalAmount
+          ? String(tuitionFee.totalAmount).replace(/\./g, "")
+          : "0";
+        return sum + (parseInt(amount) || 0);
       }, 0);
 
     // Tạo tên file động dựa trên các tham số
@@ -6449,6 +6510,7 @@ const getWordTuitionFee = async (req, res) => {
     ];
 
     // Thêm dữ liệu vào bảng
+    console.log(`Adding ${tuitionFees.length} rows to Word table`);
     tuitionFees.forEach((tuitionFee) => {
       const formatCurrency = (amount) => {
         if (!amount) return "";

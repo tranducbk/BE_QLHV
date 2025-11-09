@@ -41,9 +41,12 @@ const refreshLimiter = rateLimit({
     // Skip rate limiting trong development
     return process.env.NODE_ENV === "development";
   },
-  // Debug logs
-  onLimitReached: (req, res, options) => {
+  // Handler tùy chỉnh để log khi rate limit bị vượt (thay thế onLimitReached)
+  handler: (req, res) => {
     console.log("⚠️ Rate limit reached for refresh token:", req.ip);
+    res.status(429).json({
+      message: "Quá nhiều yêu cầu làm mới token, vui lòng thử lại sau",
+    });
   },
 });
 
