@@ -321,8 +321,9 @@ const initializeSuperAdmin = async (req, res) => {
 // API lấy TẤT CẢ tài khoản trong hệ thống - Chỉ trả về thông tin cơ bản
 const getAllAdminUsers = async (req, res) => {
   try {
-    const { page = 1, search, role } = req.query;
-    const skip = (page - 1) * limit;
+    const { page = 1, search, role, pageSize, unit } = req.query;
+    const currentLimit = pageSize ? parseInt(pageSize) : limit;
+    const skip = (page - 1) * currentLimit;
 
     // Loại bỏ SUPER_ADMIN khỏi danh sách
     let query = {
@@ -361,22 +362,66 @@ const getAllAdminUsers = async (req, res) => {
       ];
     }
 
+    // Filter theo unit nếu có
+    if (unit && unit !== "ALL") {
+      // Tìm các Commander có unit này
+      const commandersByUnit = await Commander.findAll({
+        where: {
+          unit: { [Op.iLike]: `%${unit}%` },
+        },
+        attributes: ["id"],
+      });
+
+      // Tìm các Student có unit này
+      const studentsByUnit = await Student.findAll({
+        where: {
+          unit: { [Op.iLike]: `%${unit}%` },
+        },
+        attributes: ["id"],
+      });
+
+      const commanderIdsByUnit = commandersByUnit.map((c) => c.id);
+      const studentIdsByUnit = studentsByUnit.map((s) => s.id);
+
+      // Thêm điều kiện filter theo unit vào query
+      if (query[Op.or]) {
+        // Nếu đã có Op.or từ search, thêm điều kiện unit vào
+        query[Op.and] = [
+          { [Op.or]: query[Op.or] },
+          {
+            [Op.or]: [
+              { commanderId: { [Op.in]: commanderIdsByUnit } },
+              { studentId: { [Op.in]: studentIdsByUnit } },
+            ],
+          },
+        ];
+        delete query[Op.or];
+      } else {
+        query[Op.or] = [
+          { commanderId: { [Op.in]: commanderIdsByUnit } },
+          { studentId: { [Op.in]: studentIdsByUnit } },
+        ];
+      }
+    }
+
     const { rows: users, count: totalCount } = await User.findAndCountAll({
       where: query,
       include: [
         {
           model: Commander,
           attributes: ["fullName", "unit", "birthday", "avatar"],
+          required: false,
         },
         {
           model: Student,
           attributes: ["fullName", "unit", "birthday", "avatar"],
+          required: false,
         },
       ],
       attributes: ["id", "username", "role", "isAdmin", "createdAt"],
       order: [["createdAt", "DESC"]],
       offset: skip,
-      limit,
+      limit: currentLimit,
     });
 
     // Format response - chỉ trả về thông tin cần thiết
@@ -396,7 +441,7 @@ const getAllAdminUsers = async (req, res) => {
       };
     });
 
-    const totalPages = Math.ceil(totalCount / limit);
+    const totalPages = Math.ceil(totalCount / currentLimit);
 
     return res
       .status(200)
