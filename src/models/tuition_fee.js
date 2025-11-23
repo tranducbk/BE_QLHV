@@ -10,7 +10,7 @@ const TuitionFee = sequelize.define(
       primaryKey: true,
     },
     studentId: { type: DataTypes.UUID, allowNull: false },
-    totalAmount: { type: DataTypes.DECIMAL(18, 2), allowNull: false },
+    totalAmount: { type: DataTypes.INTEGER, allowNull: false },
     semester: { type: DataTypes.STRING, allowNull: true },
     schoolYear: { type: DataTypes.STRING, allowNull: true },
     content: { type: DataTypes.STRING, allowNull: true },

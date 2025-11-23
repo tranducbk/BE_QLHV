@@ -287,7 +287,7 @@ model time_tables {
 model tuition_fees {
   id          String    @id @db.Uuid
   studentId   String    @db.Uuid
-  totalAmount Decimal   @db.Decimal(18, 2)
+  totalAmount Int
   semester    String?   @db.VarChar(255)
   schoolYear  String?   @db.VarChar(255)
   content     String?   @db.VarChar(255)

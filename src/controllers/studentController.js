@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const {
   Student,
   University,
@@ -368,6 +369,31 @@ const getTuitionFee = async (req, res) => {
 const addTuitionFee = async (req, res) => {
   try {
     const { studentId } = req.params;
+    const { semester, schoolYear } = req.body;
+
+    // Kiểm tra quyền truy cập
+    const accessCheck = await checkStudentAccess(req, studentId);
+    if (!accessCheck.allowed) {
+      return res.status(403).json({ message: accessCheck.message });
+    }
+
+    // Kiểm tra trùng học kỳ + năm học
+    if (semester && schoolYear) {
+      const existingFee = await TuitionFee.findOne({
+        where: {
+          studentId,
+          semester,
+          schoolYear,
+        },
+      });
+
+      if (existingFee) {
+        return res.status(400).json({
+          message: `Học phí cho ${semester} - ${schoolYear} đã tồn tại. Vui lòng xóa học phí cũ trước khi thêm mới.`,
+        });
+      }
+    }
+
     const created = await TuitionFee.create({
       studentId,
       totalAmount: req.body.totalAmount,
@@ -378,7 +404,7 @@ const addTuitionFee = async (req, res) => {
     });
     return res.status(201).json(created);
   } catch (error) {
-    return res.status(500).json(error);
+    return res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -632,6 +658,40 @@ const updateTuitionFee = async (req, res) => {
     const fee = await TuitionFee.findByPk(tuitionFeeId);
     if (!fee || fee.studentId !== studentId)
       return res.status(404).json({ message: "tuitionFee không tồn tại" });
+
+    // Kiểm tra quyền truy cập
+    const accessCheck = await checkStudentAccess(req, studentId);
+    if (!accessCheck.allowed) {
+      return res.status(403).json({ message: accessCheck.message });
+    }
+
+    // Kiểm tra nếu học phí đã thanh toán thì không cho cập nhật
+    const status = String(fee.status || "").toLowerCase();
+    if (status.includes("đã thanh toán") || status.includes("đã đóng")) {
+      return res.status(400).json({
+        message: "Không thể cập nhật học phí đã thanh toán. Vui lòng xóa và tạo mới nếu cần.",
+      });
+    }
+
+    // Kiểm tra trùng học kỳ + năm học (nếu có thay đổi)
+    const { semester, schoolYear } = req.body;
+    if (semester && schoolYear) {
+      const existingFee = await TuitionFee.findOne({
+        where: {
+          studentId,
+          semester,
+          schoolYear,
+          id: { [Op.ne]: tuitionFeeId }, // Loại trừ học phí đang sửa
+        },
+      });
+
+      if (existingFee) {
+        return res.status(400).json({
+          message: `Học phí cho ${semester} - ${schoolYear} đã tồn tại. Vui lòng xóa học phí trùng trước khi cập nhật.`,
+        });
+      }
+    }
+
     await fee.update(req.body);
     return res.status(200).json(fee);
   } catch (error) {
