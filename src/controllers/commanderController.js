@@ -1092,7 +1092,7 @@ const getTuitionFees = async (req, res) => {
         university: s && s.university ? s.university.universityName : "",
         unit: s ? s.unit : "",
         className: s && s.className ? s.className : "",
-        totalAmount: f.totalAmount,
+        totalAmount: f.totalAmount, // INTEGER trả về number trực tiếp
         semester: f.semester,
         schoolYear: f.schoolYear,
         content: f.content,
@@ -1101,11 +1101,7 @@ const getTuitionFees = async (req, res) => {
     });
 
     const totalAmountSum = tuitionFees.reduce((sum, t) => {
-      const val =
-        typeof t.totalAmount === "string"
-          ? t.totalAmount.replace(/\./g, "")
-          : t.totalAmount;
-      return sum + Number(val || 0);
+      return sum + (Number(t.totalAmount) || 0);
     }, 0);
 
     return res.status(200).json({ tuitionFees, totalAmountSum });
@@ -3910,9 +3906,6 @@ const getAllStudentsGrades = async (req, res) => {
             if (semester) {
               const semesterArray = semester.split(",").map((s) => s.trim());
               const semesterMatch = semesterArray.includes(result.semester);
-              console.log(
-                `  Result semester ${result.semester} in [${semesterArray}]? ${semesterMatch}`
-              );
               matches = matches && semesterMatch;
             }
 
@@ -3923,17 +3916,11 @@ const getAllStudentsGrades = async (req, res) => {
               const schoolYearMatch = schoolYearArray.includes(
                 result.schoolYear
               );
-              console.log(
-                `  Result schoolYear ${result.schoolYear} in [${schoolYearArray}]? ${schoolYearMatch}`
-              );
               matches = matches && schoolYearMatch;
             }
 
             return matches;
           });
-          console.log(
-            `  Filtered from ${semesterResults.length} to ${filteredResults.length} results`
-          );
         }
 
         if (filteredResults.length > 0) {
@@ -3944,12 +3931,6 @@ const getAllStudentsGrades = async (req, res) => {
           const subjects = Array.isArray(result.subjects)
             ? result.subjects
             : [];
-
-          // DEBUG LOGGING
-          console.log(
-            `\n=== Processing result for ${result.semester} ${result.schoolYear} ===`
-          );
-          console.log(`Subjects count: ${subjects.length}`);
 
           const normalizedSubjects = subjects.map((s) => {
             let letter = s.letterGrade;
@@ -3963,16 +3944,6 @@ const getAllStudentsGrades = async (req, res) => {
             const gradePoint4 = gradeHelper.letterToGrade4(letter);
             const gradePoint10 = gradeHelper.letterToGrade10(letter);
 
-            // DEBUG: Log subject details
-            if (letter === "F" || gradePoint4 === 0) {
-              console.log(`  [FAILED] ${s.subjectName}:`, {
-                originalLetter: s.letterGrade,
-                normalizedLetter: letter,
-                gradePoint4,
-                credits: s.credits,
-              });
-            }
-
             return {
               ...(s.toObject?.() || s),
               letterGrade: letter,
@@ -3985,12 +3956,6 @@ const getAllStudentsGrades = async (req, res) => {
             gradeHelper.calculateFailedSubjects(normalizedSubjects);
           const debtCredits =
             gradeHelper.calculateDebtCredits(normalizedSubjects);
-
-          // DEBUG: Log results
-          console.log(
-            `CALCULATED: failedSubjects=${failedSubjects}, debtCredits=${debtCredits}`
-          );
-          console.log("===\n");
 
           // Chỉ thêm vào kết quả nếu có subjects data
           if (normalizedSubjects.length > 0) {
@@ -5337,12 +5302,6 @@ const getYearlyStatistics = async (req, res) => {
               ? result.subjects
               : [];
 
-            // DEBUG LOGGING FOR YEARLY
-            console.log(
-              `\n=== [YEARLY] Processing ${result.semester} ${result.schoolYear} ===`
-            );
-            console.log(`Subjects count: ${subjects.length}`);
-
             const normalizedSubjects = subjects.map((s) => {
               let letter = s.letterGrade;
               if (!letter) {
@@ -5354,16 +5313,6 @@ const getYearlyStatistics = async (req, res) => {
               }
               const gradePoint4 = gradeHelper.letterToGrade4(letter);
               const gradePoint10 = gradeHelper.letterToGrade10(letter);
-
-              // DEBUG: Log failed subjects
-              if (letter === "F" || gradePoint4 === 0) {
-                console.log(`  [YEARLY FAILED] ${s.subjectName}:`, {
-                  originalLetter: s.letterGrade,
-                  normalizedLetter: letter,
-                  gradePoint4,
-                  credits: s.credits,
-                });
-              }
 
               return {
                 ...(s.toObject?.() || s),
@@ -5377,11 +5326,6 @@ const getYearlyStatistics = async (req, res) => {
               gradeHelper.calculateFailedSubjects(normalizedSubjects);
             const debtCredits =
               gradeHelper.calculateDebtCredits(normalizedSubjects);
-
-            // DEBUG: Log calculation
-            console.log(
-              `[YEARLY] Semester ${result.semester}: failedSubjects=${failedSubjects}, debtCredits=${debtCredits}`
-            );
 
             yearlyFailedSubjects += failedSubjects;
             yearlyDebtCredits += debtCredits;

@@ -203,7 +203,7 @@ const Login = async (req, res) => {
       { expiresIn: "15m" }
     );
 
-    // Refresh Token: 7 ngày (dài, lưu trong httpOnly cookie)
+    // Refresh Token: 1 ngày
     const refreshToken = jwt.sign(
       {
         id: user.id,
@@ -211,33 +211,25 @@ const Login = async (req, res) => {
         role: user.role || (user.isAdmin ? "ADMIN" : "USER"),
       },
       process.env.JWT_REFRESH_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "1d" }
     );
 
-    // Lưu refreshToken vào database để có thể revoke
-    await user.update({ refreshToken });
+    // Không lưu refreshToken vào database - chỉ dùng cookie (stateless JWT)
 
     // Cookie settings cho cloud deployment
     const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
     const isProduction = process.env.NODE_ENV === "production";
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isHttps,
-      sameSite: isProduction ? "none" : "lax",
-      path: "/",
-      maxAge: 15 * 60 * 1000,
-    };
-
+    // Chỉ set refreshToken vào httpOnly cookie
+    // accessToken chỉ trả về trong response body, frontend lưu vào localStorage
     const refreshCookieOptions = {
       httpOnly: true,
-      secure: isHttps,
-      sameSite: isProduction ? "none" : "lax",
+      secure: isHttps, // Chỉ secure khi HTTPS
+      sameSite: isProduction ? "none" : "lax", // None cho cross-origin, Lax cho localhost
       path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000, // 1 ngày
     };
 
-    res.cookie("accessToken", accessToken, cookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
     const { password, refreshToken: _, ...other } = user.toJSON();
@@ -297,26 +289,7 @@ const changePassword = async (req, res) => {
 
 const Logout = async (req, res) => {
   try {
-    // Xóa refreshToken khỏi database (revoke token)
-    const refreshToken = req.cookies?.refreshToken;
-    if (refreshToken) {
-      const decoded = jwt.decode(refreshToken);
-      if (decoded?.id) {
-        await User.update(
-          { refreshToken: null },
-          { where: { id: decoded.id } }
-        );
-      }
-    }
-
-    // Clear cookies với cùng options như khi set
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: true, // Bắt buộc true cho SameSite: "none"
-      path: "/",
-      sameSite: "none", // Luôn "none" cho cross-origin
-      domain: undefined, // Không set domain để hoạt động trên tất cả máy
-    });
+    // Clear refreshToken cookie (accessToken không lưu trong cookie)
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: true, // Bắt buộc true cho SameSite: "none"
@@ -335,6 +308,16 @@ const Logout = async (req, res) => {
  */
 const refreshAccessToken = async (req, res) => {
   try {
+    // Debug: Log cookies để kiểm tra
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Refresh] Cookies received:", req.cookies);
+      console.log(
+        "[Refresh] Has refreshToken cookie:",
+        !!req.cookies?.refreshToken
+      );
+      console.log("[Refresh] Request body:", req.body);
+    }
+
     // Lấy refresh token từ cookie (ưu tiên) hoặc từ request body (fallback cho localStorage)
     let refreshToken = req.cookies?.refreshToken;
 
@@ -350,21 +333,24 @@ const refreshAccessToken = async (req, res) => {
     }
 
     if (!refreshToken) {
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "[Refresh] No refresh token found in cookies, body, or header"
+        );
+      }
       return res.status(401).json({ message: "Refresh token không tồn tại" });
     }
 
-    // Verify refresh token
+    // Verify refresh token (chỉ verify signature và expiry - stateless)
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
 
-    // Kiểm tra trong database: Token có bị revoke không?
+    // Kiểm tra user có tồn tại không
     const user = await User.findByPk(decoded.id);
-    if (!user || user.refreshToken !== refreshToken) {
-      return res
-        .status(401)
-        .json({ message: "Refresh token không hợp lệ hoặc đã bị thu hồi" });
+    if (!user) {
+      return res.status(401).json({ message: "Người dùng không tồn tại" });
     }
 
-    // Tạo access token mới
+    // Tạo access token mới (15 phút)
     const newAccessToken = jwt.sign(
       {
         id: decoded.id,
@@ -375,62 +361,21 @@ const refreshAccessToken = async (req, res) => {
       { expiresIn: "15m" }
     );
 
-    // Tạo refresh token mới (Token Rotation)
-    const newRefreshToken = jwt.sign(
-      {
-        id: decoded.id,
-        admin: decoded.admin,
-        role: decoded.role,
-      },
-      process.env.JWT_REFRESH_SECRET,
-      { expiresIn: "7d" }
-    );
+    // KHÔNG tạo refreshToken mới khi refresh
+    // Chỉ tạo refreshToken mới khi đăng nhập
+    // Giữ nguyên refreshToken cũ để đảm bảo thời gian hết hạn cố định (1 ngày từ lúc đăng nhập)
 
-    // Lưu refreshToken mới vào database (vô hiệu hóa token cũ)
-    await user.update({ refreshToken: newRefreshToken });
-
-    // Cookie settings cho cloud deployment
-    const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
-
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isProduction ? "none" : "lax", // None cho cross-origin, Lax cho localhost
-      path: "/",
-      maxAge: 15 * 60 * 1000, // 15 phút
-    };
-
-    const refreshCookieOptions = {
-      httpOnly: true,
-      secure: isHttps, // Chỉ secure khi HTTPS
-      sameSite: isProduction ? "none" : "lax", // None cho cross-origin, Lax cho localhost
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
-    };
-
-    // Lưu access token vào httpOnly cookie
-    res.cookie("accessToken", newAccessToken, cookieOptions);
-
-    // Lưu refresh token mới vào httpOnly cookie
-    res.cookie("refreshToken", newRefreshToken, refreshCookieOptions);
-
-    // Fallback: Trả tokens về frontend nếu cookies không hoạt động
+    // Trả accessToken về frontend (không set vào cookie)
+    // Frontend sẽ lưu vào localStorage
     return res.status(200).json({
       message: "Token đã được làm mới",
       accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
+      // Không trả refreshToken vì không tạo mới
     });
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       // Refresh token hết hạn -> yêu cầu đăng nhập lại
       res.clearCookie("refreshToken", {
-        httpOnly: true,
-        secure: true, // Bắt buộc true cho SameSite: "none"
-        path: "/",
-        sameSite: "none", // Luôn "none" cho cross-origin
-        domain: undefined, // Không set domain để hoạt động trên tất cả máy
-      });
-      res.clearCookie("accessToken", {
         httpOnly: true,
         secure: true, // Bắt buộc true cho SameSite: "none"
         path: "/",
