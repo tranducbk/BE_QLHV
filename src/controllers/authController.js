@@ -308,16 +308,6 @@ const Logout = async (req, res) => {
  */
 const refreshAccessToken = async (req, res) => {
   try {
-    // Debug: Log cookies để kiểm tra
-    if (process.env.NODE_ENV === "development") {
-      console.log("[Refresh] Cookies received:", req.cookies);
-      console.log(
-        "[Refresh] Has refreshToken cookie:",
-        !!req.cookies?.refreshToken
-      );
-      console.log("[Refresh] Request body:", req.body);
-    }
-
     // Lấy refresh token từ cookie (ưu tiên) hoặc từ request body (fallback cho localStorage)
     let refreshToken = req.cookies?.refreshToken;
 
