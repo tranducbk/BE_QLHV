@@ -128,7 +128,25 @@ const getAllStudentsWithHierarchy = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    return res.status(200).json(students);
+    // Normalize familyMembers cho tất cả students: đảm bảo mỗi member có isDeceased với giá trị mặc định
+    const normalizedStudents = students.map((student) => {
+      const studentJson = student.toJSON();
+      const normalizedFamilyMembers = (student.familyMembers || []).map(
+        (member) => ({
+          ...member,
+          isDeceased:
+            member.isDeceased !== undefined
+              ? Boolean(member.isDeceased)
+              : false,
+        })
+      );
+      return {
+        ...studentJson,
+        familyMembers: normalizedFamilyMembers,
+      };
+    });
+
+    return res.status(200).json(normalizedStudents);
   } catch (error) {
     return res.status(500).json({ message: "Lỗi server" });
   }
@@ -176,9 +194,19 @@ const getStudent = async (req, res) => {
 
     // Đảm bảo familyMembers và foreignRelations được trả về
     const studentJson = student.toJSON();
+
+    // Normalize familyMembers: đảm bảo mỗi member có isDeceased với giá trị mặc định
+    const normalizedFamilyMembers = (student.familyMembers || []).map(
+      (member) => ({
+        ...member,
+        isDeceased:
+          member.isDeceased !== undefined ? Boolean(member.isDeceased) : false,
+      })
+    );
+
     const studentData = {
       ...studentJson,
-      familyMembers: student.familyMembers || [],
+      familyMembers: normalizedFamilyMembers,
       foreignRelations: student.foreignRelations || [],
       // Đổi tên field từ education_level sang educationLevel để đồng nhất với frontend
       educationLevel: studentJson.education_level || studentJson.educationLevel,
@@ -261,7 +289,12 @@ const updateStudent = async (req, res) => {
 
     // Thêm thông tin gia đình nếu có
     if (familyMembers && Array.isArray(familyMembers)) {
-      updateData.familyMembers = familyMembers;
+      // Đảm bảo mỗi family member có isDeceased với giá trị mặc định là false
+      updateData.familyMembers = familyMembers.map((member) => ({
+        ...member,
+        isDeceased:
+          member.isDeceased !== undefined ? Boolean(member.isDeceased) : false,
+      }));
     }
 
     // Thêm thông tin yếu tố nước ngoài nếu có
@@ -303,7 +336,7 @@ const updateStudent = async (req, res) => {
       probationaryPartyMember,
       dateOfEnlistment,
       avatar,
-      familyMembers: familyMembers || student.familyMembers || [],
+      familyMembers: updateData.familyMembers || student.familyMembers || [],
       foreignRelations: foreignRelations || student.foreignRelations || [],
     });
 
@@ -669,7 +702,8 @@ const updateTuitionFee = async (req, res) => {
     const status = String(fee.status || "").toLowerCase();
     if (status.includes("đã thanh toán") || status.includes("đã đóng")) {
       return res.status(400).json({
-        message: "Không thể cập nhật học phí đã thanh toán. Vui lòng xóa và tạo mới nếu cần.",
+        message:
+          "Không thể cập nhật học phí đã thanh toán. Vui lòng xóa và tạo mới nếu cần.",
       });
     }
 
@@ -741,10 +775,17 @@ const addFamilyMember = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
 
+    // Đảm bảo isDeceased có giá trị mặc định là false nếu không được cung cấp
+    const isDeceased =
+      familyMemberData.isDeceased !== undefined
+        ? Boolean(familyMemberData.isDeceased)
+        : false;
+
     // Thêm ID cho family member
     const newFamilyMember = {
       id: crypto.randomUUID(),
       ...familyMemberData,
+      isDeceased: isDeceased,
     };
 
     // Lấy danh sách family members hiện tại
@@ -773,8 +814,17 @@ const getFamilyMembers = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy học viên" });
     }
 
+    // Normalize familyMembers: đảm bảo mỗi member có isDeceased với giá trị mặc định
+    const normalizedFamilyMembers = (student.familyMembers || []).map(
+      (member) => ({
+        ...member,
+        isDeceased:
+          member.isDeceased !== undefined ? Boolean(member.isDeceased) : false,
+      })
+    );
+
     res.status(200).json({
-      familyMembers: student.familyMembers || [],
+      familyMembers: normalizedFamilyMembers,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -801,6 +851,11 @@ const updateFamilyMember = async (req, res) => {
       return res
         .status(404)
         .json({ message: "Không tìm thấy thông tin người thân" });
+    }
+
+    // Xử lý isDeceased: đảm bảo là boolean
+    if (updateData.isDeceased !== undefined) {
+      updateData.isDeceased = Boolean(updateData.isDeceased);
     }
 
     // Cập nhật thông tin

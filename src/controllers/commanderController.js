@@ -7180,6 +7180,288 @@ const getExcelPoliticalManagement = async (req, res) => {
       };
     });
 
+    // ========== TÍNH TOÁN THỐNG KÊ ==========
+    const totalStudents = students.length;
+
+    // Thống kê đơn vị (unit)
+    const unitStats = {};
+    let unitNoData = 0;
+    students.forEach((student) => {
+      const unit = student.unit?.trim();
+      if (!unit || unit === "" || unit === "Chưa có dữ liệu") {
+        unitNoData++;
+      } else {
+        unitStats[unit] = (unitStats[unit] || 0) + 1;
+      }
+    });
+    // Format đơn vị với xuống dòng nếu có nhiều loại
+    const unitLines = Object.entries(unitStats)
+      .sort((a, b) => {
+        // Sắp xếp theo thứ tự L1-H5 đến L6-H5
+        const unitOrder = {
+          "L1 - H5": 1,
+          "L2 - H5": 2,
+          "L3 - H5": 3,
+          "L4 - H5": 4,
+          "L5 - H5": 5,
+          "L6 - H5": 6,
+        };
+        const orderA = unitOrder[a[0]] || 999;
+        const orderB = unitOrder[b[0]] || 999;
+        return orderA - orderB;
+      })
+      .map(([key, value]) => `${key}: ${value}`);
+    if (unitNoData > 0) {
+      unitLines.push(`Chưa có dữ liệu: ${unitNoData}`);
+    }
+    const unitTotalText =
+      unitLines.length > 0
+        ? unitLines.join("\n")
+        : `Chưa có dữ liệu: ${unitNoData}`;
+
+    // Thống kê dân tộc
+    const ethnicityStats = {};
+    let ethnicityNoData = 0;
+    students.forEach((student) => {
+      const ethnicity = student.ethnicity?.trim();
+      if (!ethnicity || ethnicity === "" || ethnicity === "Chưa có dữ liệu") {
+        ethnicityNoData++;
+      } else {
+        ethnicityStats[ethnicity] = (ethnicityStats[ethnicity] || 0) + 1;
+      }
+    });
+    const ethnicitySummary = Object.entries(ethnicityStats)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(", ");
+    // Format dân tộc với xuống dòng nếu có nhiều loại
+    const ethnicityLines = Object.entries(ethnicityStats).map(
+      ([key, value]) => `${key}: ${value}`
+    );
+    if (ethnicityNoData > 0) {
+      ethnicityLines.push(`Chưa có dữ liệu: ${ethnicityNoData}`);
+    }
+    const ethnicityTotalText =
+      ethnicityLines.length > 0
+        ? ethnicityLines.join("\n")
+        : `Chưa có dữ liệu: ${ethnicityNoData}`;
+
+    // Thống kê ngày vào Đảng (probationaryPartyMember)
+    let hasPartyJoinDate = 0;
+    let noPartyJoinDate = 0;
+    students.forEach((student) => {
+      if (student.probationaryPartyMember) {
+        hasPartyJoinDate++;
+      } else {
+        noPartyJoinDate++;
+      }
+    });
+    // Format ngày vào Đảng với xuống dòng
+    const partyJoinDateLines = [`Đảng viên dự bị: ${hasPartyJoinDate}`];
+    if (noPartyJoinDate > 0) {
+      partyJoinDateLines.push(`Chưa có dữ liệu: ${noPartyJoinDate}`);
+    }
+    const partyJoinDateSummary = partyJoinDateLines.join("\n");
+
+    // Thống kê ngày vào Đảng chính thức (fullPartyMember)
+    let hasPartyOfficialDate = 0;
+    let noPartyOfficialDate = 0;
+    students.forEach((student) => {
+      if (student.fullPartyMember) {
+        hasPartyOfficialDate++;
+      } else {
+        noPartyOfficialDate++;
+      }
+    });
+    // Format ngày vào Đảng chính thức với xuống dòng
+    const partyOfficialDateLines = [
+      `Đảng viên chính thức: ${hasPartyOfficialDate}`,
+    ];
+    if (noPartyOfficialDate > 0) {
+      partyOfficialDateLines.push(`Chưa có dữ liệu: ${noPartyOfficialDate}`);
+    }
+    const partyOfficialDateSummary = partyOfficialDateLines.join("\n");
+
+    // Thống kê xếp loại Đảng viên
+    let partyRatingXuatSac = 0; // HTXSNV
+    let partyRatingTot = 0; // HTTNV
+    let partyRatingHoanThanh = 0; // HTNV
+    let partyRatingKhongHoanThanh = 0; // KHTNV
+
+    students.forEach((student) => {
+      // Tìm yearlyResult cho năm học cụ thể
+      let yearlyResult = student.yearly_results?.find(
+        (yr) => yr.schoolYear === schoolYear
+      );
+      if (!yearlyResult && student.yearly_results?.length > 0) {
+        yearlyResult = student.yearly_results.sort((a, b) =>
+          b.schoolYear.localeCompare(a.schoolYear)
+        )[0];
+      }
+      const partyRating = yearlyResult?.partyRating || "";
+      if (partyRating === "HTXSNV") partyRatingXuatSac++;
+      else if (partyRating === "HTTNV") partyRatingTot++;
+      else if (partyRating === "HTNV") partyRatingHoanThanh++;
+      else if (partyRating === "KHTNV") partyRatingKhongHoanThanh++;
+    });
+    // Format xếp loại đảng viên với xuống dòng
+    const partyRatingLines = [];
+    if (partyRatingXuatSac > 0)
+      partyRatingLines.push(`HTXSNV: ${partyRatingXuatSac}`);
+    if (partyRatingTot > 0) partyRatingLines.push(`HTTNV: ${partyRatingTot}`);
+    if (partyRatingHoanThanh > 0)
+      partyRatingLines.push(`HTNV: ${partyRatingHoanThanh}`);
+    if (partyRatingKhongHoanThanh > 0)
+      partyRatingLines.push(`KHTNV: ${partyRatingKhongHoanThanh}`);
+    const partyRatingSummary =
+      partyRatingLines.length > 0
+        ? partyRatingLines.join("\n")
+        : "Chưa có dữ liệu";
+
+    // Thống kê khen thưởng
+    let rewardCSTT = 0; // Chiến sĩ tiên tiến
+    let rewardCSTD = 0; // Chiến sĩ thi đua
+    let rewardBKBQP = 0; // Bằng khen BQP
+    let rewardCSTDTQ = 0; // Chiến sĩ thi đua toàn quốc
+
+    students.forEach((student) => {
+      const yearlyAchievements = student.yearly_achievements || [];
+      const targetYear = parseInt(schoolYear.split("-")[0]);
+      const currentYearAchievements = yearlyAchievements.filter(
+        (ya) => ya.year === targetYear
+      );
+      const relevantAchievements =
+        currentYearAchievements.length > 0
+          ? currentYearAchievements
+          : yearlyAchievements;
+
+      relevantAchievements.forEach((ya) => {
+        if (ya.title === "Chiến sĩ tiên tiến") rewardCSTT++;
+        if (ya.title === "Chiến sĩ thi đua") rewardCSTD++;
+        if (ya.hasMinistryReward) rewardBKBQP++;
+        if (ya.hasNationalReward) rewardCSTDTQ++;
+      });
+    });
+    // Format khen thưởng với xuống dòng - luôn hiển thị đủ 4 loại
+    const rewardLines = [
+      `Chiến sĩ tiên tiến: ${rewardCSTT}`,
+      `Chiến sĩ thi đua: ${rewardCSTD}`,
+      `Bằng khen của Bộ trưởng BQP: ${rewardBKBQP}`,
+      `Chiến sĩ thi đua toàn quân: ${rewardCSTDTQ}`,
+    ];
+    const rewardSummary = rewardLines.join("\n");
+
+    // Thống kê xếp loại rèn luyện
+    const trainingRatingStats = {};
+    students.forEach((student) => {
+      let yearlyResult = student.yearly_results?.find(
+        (yr) => yr.schoolYear === schoolYear
+      );
+      if (!yearlyResult && student.yearly_results?.length > 0) {
+        yearlyResult = student.yearly_results.sort((a, b) =>
+          b.schoolYear.localeCompare(a.schoolYear)
+        )[0];
+      }
+      const trainingRating = yearlyResult?.trainingRating || "Chưa đánh giá";
+      trainingRatingStats[trainingRating] =
+        (trainingRatingStats[trainingRating] || 0) + 1;
+    });
+    // Format xếp loại rèn luyện với xuống dòng
+    const trainingRatingLines = Object.entries(trainingRatingStats).map(
+      ([key, value]) => `${key}: ${value}`
+    );
+    const trainingRatingSummary =
+      trainingRatingLines.length > 0
+        ? trainingRatingLines.join("\n")
+        : "Chưa có dữ liệu";
+
+    // Thống kê yếu tố nước ngoài
+    let hasForeignRelations = 0;
+    let noForeignRelations = 0;
+    students.forEach((student) => {
+      const foreignRelations = student.foreignRelations;
+      if (
+        foreignRelations &&
+        Array.isArray(foreignRelations) &&
+        foreignRelations.length > 0
+      ) {
+        // Kiểm tra xem có ít nhất một relation có dữ liệu không
+        const hasData = foreignRelations.some(
+          (relation) =>
+            relation &&
+            (relation.fullName || relation.country || relation.nationality)
+        );
+        if (hasData) {
+          hasForeignRelations++;
+        } else {
+          noForeignRelations++;
+        }
+      } else {
+        noForeignRelations++;
+      }
+    });
+    // Format yếu tố nước ngoài với xuống dòng
+    const foreignRelationsLines = [
+      `Có yếu tố nước ngoài: ${hasForeignRelations}`,
+      `Không có yếu tố nước ngoài: ${noForeignRelations}`,
+    ];
+    const foreignRelationsSummary = foreignRelationsLines.join("\n");
+
+    // ========== THÊM DÒNG TỔNG HỢP ==========
+    worksheet.addRow([]); // Dòng trống
+
+    const summaryRow = worksheet.addRow([
+      "TỔNG HỢP",
+      unitTotalText,
+      `Tổng số học viên: ${totalStudents}`,
+      "",
+      "",
+      "",
+      ethnicityTotalText,
+      "", // Cột tôn giáo không cần thống kê
+      foreignRelationsSummary,
+      partyJoinDateSummary,
+      partyOfficialDateSummary,
+      `HTXSNV: ${partyRatingXuatSac}`,
+      `HTTNV: ${partyRatingTot}`,
+      `HTNV: ${partyRatingHoanThanh}`,
+      `KHTNV: ${partyRatingKhongHoanThanh}`,
+      rewardSummary, // Hiển thị cả danh hiệu khen thưởng với xuống dòng
+      "",
+      "",
+      "",
+      trainingRatingSummary,
+    ]);
+
+    // Style cho dòng tổng hợp
+    summaryRow.eachCell((cell, colNumber) => {
+      cell.font = {
+        name: "Times New Roman",
+        size: 12,
+        bold: true,
+      };
+      // Căn trái cho các cột có text dài, căn giữa cho các cột số
+      const leftAlignColumns = [1, 2, 3, 7, 9, 10, 11, 16, 20]; // STT, Đơn vị, Tổng số, Dân tộc, Yếu tố nước ngoài, Vào Đảng, Chính thức, Khen thưởng, Rèn luyện
+      cell.alignment = {
+        horizontal: leftAlignColumns.includes(colNumber) ? "left" : "center",
+        vertical: "middle",
+        wrapText: true, // Tự động xuống dòng khi có nhiều loại
+      };
+      cell.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE6E6FA" }, // Màu xám nhạt
+      };
+    });
+
+    // Merge các cột khen thưởng (P-S) để hiển thị đầy đủ danh hiệu
+    worksheet.mergeCells(`P${summaryRow.number}:S${summaryRow.number}`);
+
     worksheet.columns = [
       { width: 5 }, // STT
       { width: 10 }, // Đơn vị
