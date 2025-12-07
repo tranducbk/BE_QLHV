@@ -5723,10 +5723,16 @@ const getYearlyStatistics = async (req, res) => {
 // API lấy tất cả sinh viên cho xếp loại Đảng viên (bao gồm sinh viên mới)
 const getAllStudentsForPartyRating = async (req, res) => {
   try {
-    const { schoolYear, page = 1, pageSize = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const { schoolYear, page, pageSize } = req.query;
+    
+    // Chỉ áp dụng phân trang nếu có tham số page hoặc pageSize
+    const usePagination = page || pageSize;
+    const parsedPage = page ? parseInt(page) : 1;
+    const parsedPageSize = pageSize ? parseInt(pageSize) : 10;
+    const skip = usePagination ? (parsedPage - 1) * parsedPageSize : 0;
+    const limit = usePagination ? parsedPageSize : undefined;
 
-    // Lấy students với phân trang
+    // Lấy students với hoặc không có phân trang
     const students = await Student.findAll({
       include: [
         { model: University, attributes: ["universityName"] },
@@ -5741,8 +5747,7 @@ const getAllStudentsForPartyRating = async (req, res) => {
           required: false,
         },
       ],
-      offset: skip,
-      limit: parseInt(pageSize),
+      ...(usePagination && { offset: skip, limit: limit }),
     });
 
     let partyRatings = [];
@@ -5774,69 +5779,94 @@ const getAllStudentsForPartyRating = async (req, res) => {
           }
         }
 
-        // Xác định schoolYear cho sinh viên
-        let studentSchoolYear = "Chưa có dữ liệu";
-
         if (schoolYear && schoolYear !== "undefined" && schoolYear !== "all") {
-          // Nếu có schoolYear cụ thể, sử dụng schoolYear đó
-          studentSchoolYear = schoolYear;
-        } else if (semesterResults.length > 0) {
-          // Nếu không có schoolYear cụ thể nhưng có dữ liệu học tập, lấy năm học mới nhất
-          const latestSemester = semesterResults[semesterResults.length - 1];
-          studentSchoolYear = latestSemester.schoolYear;
-        } else if (yearlyResults.length > 0) {
-          // Nếu không có semesterResults nhưng có yearlyResults, lấy năm học mới nhất
-          const latestYearly = yearlyResults[yearlyResults.length - 1];
-          studentSchoolYear = latestYearly.schoolYear;
+          // Nếu có schoolYear cụ thể, chỉ tạo 1 bản ghi cho năm đó
+          const yearlyResult = yearlyResults.find(
+            (result) => result.schoolYear === schoolYear
+          );
+
+          const partyRating = {
+            id: student.id,
+            studentId: student.id,
+            fullName: student.fullName,
+            studentCode: student.studentId,
+            university: student.university?.universityName || "",
+            className: student.class?.className || "Chưa có lớp",
+            unit: student.unit || "",
+            positionParty: student.positionParty || "Không",
+            schoolYear: schoolYear,
+            yearlyResultId: yearlyResult?.id || null,
+            cumulativeCredit: yearlyResult?.cumulativeCredits || 0,
+            totalDebt: yearlyResult?.debtCredits || 0,
+            studentLevel: yearlyResult?.studentLevel || 1,
+            partyRating: yearlyResult?.partyRating
+              ? {
+                  rating: yearlyResult.partyRating,
+                  decisionNumber: yearlyResult.partyRatingDecisionNumber || "",
+                }
+              : null,
+          };
+
+          partyRatings.push(partyRating);
+        } else {
+          // Nếu không có schoolYear cụ thể (chọn "Tất cả"), tạo nhiều bản ghi - một cho mỗi năm học
+          // Lấy tất cả các năm học unique từ semesterResults và yearlyResults
+          const allSchoolYears = new Set();
+          semesterResults.forEach((sr) => {
+            if (sr.schoolYear) allSchoolYears.add(sr.schoolYear);
+          });
+          yearlyResults.forEach((yr) => {
+            if (yr.schoolYear) allSchoolYears.add(yr.schoolYear);
+          });
+
+          // Tạo một bản ghi cho mỗi năm học
+          allSchoolYears.forEach((year) => {
+            const yearlyResult = yearlyResults.find(
+              (result) => result.schoolYear === year
+            );
+
+            const partyRating = {
+              id: `${student.id}-${year}`,
+              studentId: student.id,
+              fullName: student.fullName,
+              studentCode: student.studentId,
+              university: student.university?.universityName || "",
+              className: student.class?.className || "Chưa có lớp",
+              unit: student.unit || "",
+              positionParty: student.positionParty || "Không",
+              schoolYear: year,
+              yearlyResultId: yearlyResult?.id || null,
+              cumulativeCredit: yearlyResult?.cumulativeCredits || 0,
+              totalDebt: yearlyResult?.debtCredits || 0,
+              studentLevel: yearlyResult?.studentLevel || 1,
+              partyRating: yearlyResult?.partyRating
+                ? {
+                    rating: yearlyResult.partyRating,
+                    decisionNumber: yearlyResult.partyRatingDecisionNumber || "",
+                  }
+                : null,
+            };
+
+            partyRatings.push(partyRating);
+          });
         }
-
-        // Tìm yearlyResult tương ứng với schoolYear
-        const yearlyResult = yearlyResults.find(
-          (result) => result.schoolYear === studentSchoolYear
-        );
-
-        // Tạo kết quả cho sinh viên
-        const partyRating = {
-          id: student.id,
-          studentId: student.id,
-          fullName: student.fullName,
-          studentCode: student.studentId,
-          university: student.university?.universityName || "",
-          className: student.class?.className || "Chưa có lớp",
-          unit: student.unit || "",
-          positionParty: student.positionParty || "Không",
-          schoolYear: studentSchoolYear,
-          yearlyResultId: yearlyResult?.id || null,
-          cumulativeCredit: yearlyResult?.cumulativeCredits || 0,
-          totalDebt: yearlyResult?.debtCredits || 0,
-          studentLevel: yearlyResult?.studentLevel || 1,
-          partyRating: yearlyResult?.partyRating
-            ? {
-                rating: yearlyResult.partyRating,
-                decisionNumber: yearlyResult.partyRatingDecisionNumber || "",
-              }
-            : null,
-        };
-
-        partyRatings.push(partyRating);
       } catch (error) {
         console.log(`Error processing student ${student.id}:`, error);
       }
     }
 
-    // Tính tổng số students để phân trang
-    const totalStudents = await Student.count();
-    const totalPages = Math.ceil(totalStudents / parseInt(pageSize));
-
-    // Kiểm tra nếu có tham số phân trang thì trả về object, không thì trả về mảng như cũ
-    if (req.query.page || req.query.pageSize) {
+    // Tính tổng số students để phân trang (chỉ khi có phân trang)
+    if (usePagination) {
+      const totalStudents = await Student.count();
+      const totalPages = Math.ceil(totalStudents / parsedPageSize);
       return res.status(200).json({
         partyRatings,
         totalPages,
-        currentPage: parseInt(page),
+        currentPage: parsedPage,
         totalStudents,
       });
     } else {
+      // Không có phân trang, trả về mảng tất cả kết quả
       return res.status(200).json(partyRatings);
     }
   } catch (error) {
@@ -6063,54 +6093,67 @@ const getAllStudentsForTrainingRating = async (req, res) => {
           }
         }
 
-        // Xác định schoolYear cho sinh viên
-        let studentSchoolYear = "Chưa có dữ liệu";
-
         if (schoolYear && schoolYear !== "undefined" && schoolYear !== "all") {
-          // Nếu có schoolYear cụ thể, sử dụng schoolYear đó
-          studentSchoolYear = schoolYear;
-        } else if (semesterResults.length > 0) {
-          // Nếu không có schoolYear cụ thể nhưng có dữ liệu học tập, lấy năm học mới nhất
-          const latestSemester = semesterResults[semesterResults.length - 1];
-          studentSchoolYear = latestSemester.schoolYear;
-        } else if (yearlyResults.length > 0) {
-          // Nếu không có semesterResults nhưng có yearlyResults, lấy năm học mới nhất
-          const latestYearly = yearlyResults[yearlyResults.length - 1];
-          studentSchoolYear = latestYearly.schoolYear;
-        }
-
-        // Tìm yearlyResult phù hợp với schoolYear
-        let yearlyResult = null;
-        let trainingRatingValue = null;
-
-        if (studentSchoolYear && studentSchoolYear !== "Chưa có dữ liệu") {
-          yearlyResult = yearlyResults.find(
-            (yr) => yr.schoolYear === studentSchoolYear
+          // Nếu có schoolYear cụ thể, chỉ tạo 1 bản ghi cho năm đó
+          const yearlyResult = yearlyResults.find(
+            (yr) => yr.schoolYear === schoolYear
           );
 
-          if (yearlyResult) {
-            trainingRatingValue = yearlyResult.trainingRating;
-          }
+          const trainingRating = {
+            id: student.id,
+            studentId: student.id,
+            fullName: student.fullName,
+            studentCode: student.studentId,
+            university: student.university?.universityName || "",
+            className: student.class?.className || "Chưa có lớp",
+            unit: student.unit || "",
+            positionParty: student.positionParty || "Không",
+            schoolYear: schoolYear,
+            yearlyResultId: yearlyResult?.id || null,
+            cumulativeCredit: yearlyResult?.cumulativeCredit || 0,
+            totalDebt: 0,
+            studentLevel: yearlyResult?.studentLevel || 1,
+            trainingRating: yearlyResult?.trainingRating || null,
+          };
+
+          trainingRatings.push(trainingRating);
+        } else {
+          // Nếu không có schoolYear cụ thể (chọn "Tất cả"), tạo nhiều bản ghi - một cho mỗi năm học
+          // Lấy tất cả các năm học unique từ semesterResults và yearlyResults
+          const allSchoolYears = new Set();
+          semesterResults.forEach((sr) => {
+            if (sr.schoolYear) allSchoolYears.add(sr.schoolYear);
+          });
+          yearlyResults.forEach((yr) => {
+            if (yr.schoolYear) allSchoolYears.add(yr.schoolYear);
+          });
+
+          // Tạo một bản ghi cho mỗi năm học
+          allSchoolYears.forEach((year) => {
+            const yearlyResult = yearlyResults.find(
+              (result) => result.schoolYear === year
+            );
+
+            const trainingRating = {
+              id: `${student.id}-${year}`,
+              studentId: student.id,
+              fullName: student.fullName,
+              studentCode: student.studentId,
+              university: student.university?.universityName || "",
+              className: student.class?.className || "Chưa có lớp",
+              unit: student.unit || "",
+              positionParty: student.positionParty || "Không",
+              schoolYear: year,
+              yearlyResultId: yearlyResult?.id || null,
+              cumulativeCredit: yearlyResult?.cumulativeCredit || 0,
+              totalDebt: 0,
+              studentLevel: yearlyResult?.studentLevel || 1,
+              trainingRating: yearlyResult?.trainingRating || null,
+            };
+
+            trainingRatings.push(trainingRating);
+          });
         }
-
-        // Tạo kết quả cho sinh viên
-        const trainingRating = {
-          id: student.id,
-          studentId: student.id,
-          fullName: student.fullName,
-          studentCode: student.studentId,
-          university: student.university?.universityName || "",
-          className: student.class?.className || "Chưa có lớp",
-          unit: student.unit || "",
-          schoolYear: studentSchoolYear,
-          yearlyResultId: yearlyResult?.id || null,
-          cumulativeCredit: yearlyResult?.cumulativeCredit || 0,
-          totalDebt: 0,
-          studentLevel: 1,
-          trainingRating: trainingRatingValue || null,
-        };
-
-        trainingRatings.push(trainingRating);
       } catch (error) {
         console.log(`Error processing student ${student.id}:`, error);
       }
