@@ -13,7 +13,7 @@ const YearlyAchievement = sequelize.define(
     year: { type: DataTypes.INTEGER, allowNull: false },
     decisionNumber: { type: DataTypes.STRING, allowNull: true },
     decisionDate: { type: DataTypes.DATE, allowNull: true },
-    title: { type: DataTypes.STRING, allowNull: false },
+    title: { type: DataTypes.STRING, allowNull: true },
     hasMinistryReward: { type: DataTypes.BOOLEAN, defaultValue: false },
     hasNationalReward: { type: DataTypes.BOOLEAN, defaultValue: false },
     notes: { type: DataTypes.TEXT, allowNull: true },

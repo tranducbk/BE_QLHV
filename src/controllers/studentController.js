@@ -1276,8 +1276,9 @@ const {
   getStudentGradesByStudentId,
   getSemesterGradesByStudentId,
   addSemesterGradesByStudentId,
-  updateSemesterGradesByStudentId,
   deleteSemesterGradesByStudentId,
+  requestUpdateApprovedGrades,
+  requestDeleteApprovedGrades,
 } = require("./gradeController");
 
 module.exports = {
@@ -1318,6 +1319,7 @@ module.exports = {
   getStudentGradesByStudentId,
   getSemesterGradesByStudentId,
   addSemesterGradesByStudentId,
-  updateSemesterGradesByStudentId,
   deleteSemesterGradesByStudentId,
+  requestUpdateApprovedGrades,
+  requestDeleteApprovedGrades,
 };

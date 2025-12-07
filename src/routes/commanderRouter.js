@@ -32,6 +32,7 @@ const {
   getTopStudentsByLatestSemester,
   createNotification,
   updateIsRead,
+  markAllNotificationsAsRead,
   getStudentNotifications,
   deleteNotification,
   updateNotification,
@@ -122,6 +123,7 @@ router.get("/tuitionFee/word", verifyToken, isAdmin, getWordTuitionFee);
 
 //CRUD with Notifications
 router.put("/notification/:userId/:notificationId", verifyToken, updateIsRead);
+router.put("/notifications/:userId/mark-all-read", verifyToken, markAllNotificationsAsRead);
 router.get(
   "/studentNotifications/:userId",
   verifyToken,

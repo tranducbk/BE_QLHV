@@ -1,6 +1,10 @@
 require("dotenv").config();
 const moment = require("moment");
 const {
+  NOTIFICATION_TEMPLATES,
+  NOTIFICATION_TYPES,
+} = require("../helpers/notificationHelper");
+const {
   User,
   Student,
   Commander,
@@ -22,6 +26,7 @@ const {
   AchievementProfile,
 } = require("../models");
 const { Op } = require("sequelize");
+const { sequelize } = require("../services/sequelize");
 const limit = 11;
 
 const getUser = async (req, res) => {
@@ -196,22 +201,65 @@ const getCommanderDutyScheduleByUserId = async (req, res) => {
 const updateCommanderDutySchedule = async (req, res) => {
   try {
     // Kiểm tra trùng ngày trực (loại trừ chính record đang được update)
+    const inputDate = moment(req.body.workDay).format("YYYY-MM-DD");
+
     const existingSchedule = await CommanderDutySchedule.findOne({
-      where: { workDay: req.body.workDay, id: { [Op.ne]: req.params.id } },
+      where: {
+        [Op.and]: [
+          sequelize.where(
+            sequelize.fn("DATE", sequelize.col("workDay")),
+            inputDate
+          ),
+          { id: { [Op.ne]: req.params.id } },
+        ],
+      },
     });
 
     if (existingSchedule) {
       return res.status(400).json({
-        message: `Đã có lịch trực cho ngày ${moment(req.body.workDay).format(
+        message: `Ngày ${moment(req.body.workDay).format(
           "DD/MM/YYYY"
-        )}. Vui lòng chọn ngày khác.`,
+        )} đã có ${existingSchedule.fullName} trực. Vui lòng chọn ngày khác.`,
       });
     }
 
     const updatedSchedule = await CommanderDutySchedule.findByPk(req.params.id);
     if (!updatedSchedule)
       return res.status(404).json({ message: "Không tìm thấy lịch trực" });
+
+    const oldDate = moment(updatedSchedule.workDay).format("DD/MM/YYYY");
+    const oldName = updatedSchedule.fullName;
+
     await updatedSchedule.update(req.body);
+
+    // Gửi thông báo cho tất cả users
+    try {
+      const allUsers = await User.findAll({
+        where: { isAdmin: false },
+        attributes: ["id"],
+      });
+
+      const newDate = moment(req.body.workDay).format("DD/MM/YYYY");
+      const notificationData = {
+        title: "Cập nhật lịch trực chỉ huy",
+        content: `Lịch trực ngày ${oldDate} (${oldName}) đã được cập nhật.\nMới: ${newDate} - ${req.body.fullName} - ${req.body.rank}.`,
+        type: NOTIFICATION_TYPES.DUTY_SCHEDULE,
+        link: "/users/commander-duty-schedule",
+        isRead: false,
+      };
+
+      const notifications = allUsers.map((user) => ({
+        ...notificationData,
+        userId: user.id,
+      }));
+
+      if (notifications.length > 0) {
+        await Notification.bulkCreate(notifications);
+      }
+    } catch (notificationError) {
+      console.error("Error sending notifications:", notificationError);
+    }
+
     return res.status(200).json(updatedSchedule);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -220,26 +268,62 @@ const updateCommanderDutySchedule = async (req, res) => {
 
 const createCommanderDutySchedule = async (req, res) => {
   try {
-    // Kiểm tra trùng ngày trực
+    // Kiểm tra trùng ngày trực - so sánh chỉ phần ngày từ input
+    const inputDate = moment(req.body.workDay).format("YYYY-MM-DD");
+
     const existingSchedule = await CommanderDutySchedule.findOne({
-      where: { workDay: req.body.workDay },
+      where: sequelize.where(
+        sequelize.fn("DATE", sequelize.col("workDay")),
+        inputDate
+      ),
     });
 
     if (existingSchedule) {
       return res.status(400).json({
-        message: `Đã có lịch trực cho ngày ${moment(req.body.workDay).format(
+        message: `Ngày ${moment(req.body.workDay).format(
           "DD/MM/YYYY"
-        )}. Vui lòng chọn ngày khác.`,
+        )} đã có ${existingSchedule.fullName} trực. Vui lòng chọn ngày khác.`,
       });
     }
 
     const newSchedule = await CommanderDutySchedule.create({
+      commanderId: req.body.commanderId || null,
       fullName: req.body.fullName,
       workDay: req.body.workDay,
       rank: req.body.rank,
       phoneNumber: req.body.phoneNumber,
       position: req.body.position,
     });
+
+    // Gửi thông báo cho tất cả users
+    try {
+      const allUsers = await User.findAll({
+        where: { isAdmin: false },
+        attributes: ["id"],
+      });
+
+      const formattedDate = moment(req.body.workDay).format("DD/MM/YYYY");
+      const notificationData = {
+        title: "Lịch trực chỉ huy mới",
+        content: `Đã thêm lịch trực chỉ huy ngày ${formattedDate}.\nChỉ huy trực: ${req.body.fullName} - ${req.body.rank}.`,
+        type: NOTIFICATION_TYPES.DUTY_SCHEDULE,
+        link: "/users/commander-duty-schedule",
+        isRead: false,
+      };
+
+      const notifications = allUsers.map((user) => ({
+        ...notificationData,
+        userId: user.id,
+      }));
+
+      if (notifications.length > 0) {
+        await Notification.bulkCreate(notifications);
+      }
+    } catch (notificationError) {
+      console.error("Error sending notifications:", notificationError);
+      // Không throw error, vẫn trả về kết quả thành công
+    }
+
     return res.status(201).json(newSchedule);
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -248,7 +332,45 @@ const createCommanderDutySchedule = async (req, res) => {
 
 const deleteCommanderDutySchedule = async (req, res) => {
   try {
+    // Lấy thông tin trước khi xóa để gửi thông báo
+    const scheduleToDelete = await CommanderDutySchedule.findByPk(req.params.id);
+    if (!scheduleToDelete) {
+      return res.status(404).json({ message: "Không tìm thấy lịch trực" });
+    }
+
+    const deletedDate = moment(scheduleToDelete.workDay).format("DD/MM/YYYY");
+    const deletedName = scheduleToDelete.fullName;
+    const deletedRank = scheduleToDelete.rank;
+
     await CommanderDutySchedule.destroy({ where: { id: req.params.id } });
+
+    // Gửi thông báo cho tất cả users
+    try {
+      const allUsers = await User.findAll({
+        where: { isAdmin: false },
+        attributes: ["id"],
+      });
+
+      const notificationData = {
+        title: "Xóa lịch trực chỉ huy",
+        content: `Lịch trực ngày ${deletedDate} đã được xóa.\nChỉ huy trực: ${deletedName} - ${deletedRank}.`,
+        type: NOTIFICATION_TYPES.DUTY_SCHEDULE,
+        link: "/users/commander-duty-schedule",
+        isRead: false,
+      };
+
+      const notifications = allUsers.map((user) => ({
+        ...notificationData,
+        userId: user.id,
+      }));
+
+      if (notifications.length > 0) {
+        await Notification.bulkCreate(notifications);
+      }
+    } catch (notificationError) {
+      console.error("Error sending notifications:", notificationError);
+    }
+
     return res.status(200).json({ message: "Xóa thành công" });
   } catch (error) {
     return res.status(500).json({ message: error.message });

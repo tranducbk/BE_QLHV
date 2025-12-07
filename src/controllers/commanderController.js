@@ -237,7 +237,7 @@ const getStudents = async (req, res) => {
   try {
     const { rows, count } = await Student.findAndCountAll({
       where,
-      include: [],
+      include: [{ model: ClassModel, attributes: ["className"] }],
       offset,
       limit: pageSize,
       order: [["createdAt", "DESC"]],
@@ -264,9 +264,35 @@ const getAllStudent = async (req, res) => {
 const getCommanders = async (req, res) => {
   try {
     const commanders = await Commander.findAll({
+      include: [
+        {
+          model: User,
+          attributes: ["id", "role"],
+          required: false,
+        },
+      ],
       order: [["createdAt", "DESC"]],
     });
-    return res.status(200).json(commanders);
+
+    // Lọc bỏ commanders có user với role SUPER_ADMIN
+    const filteredCommanders = commanders.filter((commander) => {
+      // Nếu commander có user và user là SUPER_ADMIN thì loại bỏ
+      if (commander.users && commander.users.length > 0) {
+        const hasSuperAdmin = commander.users.some(
+          (user) => user.role === "SUPER_ADMIN"
+        );
+        if (hasSuperAdmin) return false;
+      }
+      return true;
+    });
+
+    // Trả về data không bao gồm thông tin users
+    const result = filteredCommanders.map((cmd) => {
+      const { users, ...commanderData } = cmd.toJSON();
+      return commanderData;
+    });
+
+    return res.status(200).json(result);
   } catch (error) {
     return res.status(500).json(error);
   }
@@ -1522,7 +1548,9 @@ const getHelpCookingByDate = async (req, res) => {
 
 const getLearningClassification = async (req, res) => {
   try {
-    const students = await Student.findAll();
+    const students = await Student.findAll({
+      include: [{ model: SemesterResult, required: false }],
+    });
 
     let data = [
       { classification: "yếu", count: 0 },
@@ -1535,10 +1563,16 @@ const getLearningClassification = async (req, res) => {
     // Tạo một mảng chứa tất cả các học kỳ
     let allSemesters = [];
     students.forEach((student) => {
-      student.semester_results.forEach((info) => {
+      const semesterResults = student.semester_results || [];
+      semesterResults.forEach((info) => {
         allSemesters.push(info.semester);
       });
     });
+
+    // Kiểm tra nếu không có học kỳ nào
+    if (allSemesters.length === 0) {
+      return res.status(200).json(data);
+    }
 
     // Lọc ra học kỳ lớn nhất từ mảng
     const maxSemester = allSemesters.reduce((max, current) => {
@@ -1550,7 +1584,8 @@ const getLearningClassification = async (req, res) => {
     }
 
     students.forEach((student) => {
-      student.semester_results.forEach((learningInformation) => {
+      const semesterResults = student.semester_results || [];
+      semesterResults.forEach((learningInformation) => {
         if (learningInformation.semester === maxSemester) {
           const grade4 = learningInformation.averageGrade4 || 0;
           if (grade4 <= 1.995) data[0].count++;
@@ -1564,13 +1599,16 @@ const getLearningClassification = async (req, res) => {
 
     return res.status(200).json(data);
   } catch (error) {
-    return res.status(500).json({ message: "Lỗi server" });
+    console.error("Error in getLearningClassification:", error);
+    return res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 
 const getLearningResultBySemester = async (req, res) => {
   try {
-    const students = await Student.findAll();
+    const students = await Student.findAll({
+      include: [{ model: SemesterResult, required: false }],
+    });
 
     let data = [
       { classification: "yếu", count: 0 },
@@ -1583,10 +1621,16 @@ const getLearningResultBySemester = async (req, res) => {
     // Tạo một mảng chứa tất cả các học kỳ
     let allSemesters = [];
     students.forEach((student) => {
-      student.semester_results.forEach((info) => {
+      const semesterResults = student.semester_results || [];
+      semesterResults.forEach((info) => {
         allSemesters.push(info.semester);
       });
     });
+
+    // Kiểm tra nếu không có học kỳ nào
+    if (allSemesters.length === 0) {
+      return res.status(200).json({ maxSemester: null, data: data });
+    }
 
     // Lọc ra học kỳ lớn nhất từ mảng
     const maxSemester = allSemesters.reduce((max, current) => {
@@ -1598,7 +1642,8 @@ const getLearningResultBySemester = async (req, res) => {
     }
 
     students.forEach((student) => {
-      student.semester_results.forEach((learningInformation) => {
+      const semesterResults = student.semester_results || [];
+      semesterResults.forEach((learningInformation) => {
         if (learningInformation.semester === maxSemester) {
           const grade4 = learningInformation.averageGrade4 || 0;
           if (grade4 <= 1.995) data[0].count++;
@@ -1612,7 +1657,8 @@ const getLearningResultBySemester = async (req, res) => {
 
     res.status(200).json({ maxSemester: maxSemester, data: data });
   } catch (error) {
-    res.status(500).json({ message: "Lỗi server" });
+    console.error("Error in getLearningResultBySemester:", error);
+    res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -1850,7 +1896,7 @@ const getTopStudentsByLatestYear = async (req, res) => {
   try {
     // Lấy toàn bộ học viên kèm thông tin lớp và yearlyResults
     const students = await Student.findAll({
-      attributes: ["id", "fullName", "unit"],
+      attributes: ["id", "fullName", "unit", "studentId"],
       include: [
         { model: ClassModel, attributes: ["id", "className"] },
         { model: YearlyResult, required: false },
@@ -1882,8 +1928,8 @@ const getTopStudentsByLatestYear = async (req, res) => {
     const requestedSchoolYear = req.query.schoolYear;
     const chosenSchoolYear = requestedSchoolYear || latestSchoolYear;
 
-    // Chọn top theo từng lớp (cao nhất averageGrade4 trong latestSchoolYear)
-    const classIdToTop = new Map();
+    // Lấy TẤT CẢ học viên có dữ liệu yearly results cho năm được chọn
+    const allStudentsWithData = [];
 
     students.forEach((student) => {
       const yr = (student.yearly_results || []).find(
@@ -1897,24 +1943,22 @@ const getTopStudentsByLatestYear = async (req, res) => {
       const classId = student.class?.id?.toString() || "unknown";
       const className = student.class?.className || "Chưa có lớp";
 
-      const existing = classIdToTop.get(classId);
-      if (!existing || avg4 > existing.averageGrade4) {
-        classIdToTop.set(classId, {
-          studentId: student.id,
-          fullName: student.fullName,
-          classId,
-          className,
-          unit: student.unit || "",
-          averageGrade4: avg4,
-          averageGrade10: avg10,
-          schoolYear: chosenSchoolYear,
-          trainingRating: yr.trainingRating || null,
-        });
-      }
+      allStudentsWithData.push({
+        studentId: student.id,
+        studentCode: student.studentId || "",
+        fullName: student.fullName,
+        classId,
+        className,
+        unit: student.unit || "",
+        averageGrade4: avg4,
+        averageGrade10: avg10,
+        schoolYear: chosenSchoolYear,
+        trainingRating: yr.trainingRating || null,
+      });
     });
 
-    // Kết quả cuối: sắp xếp giảm dần theo averageGrade4
-    const topStudents = Array.from(classIdToTop.values()).sort(
+    // Sắp xếp giảm dần theo averageGrade4
+    const topStudents = allStudentsWithData.sort(
       (a, b) => b.averageGrade4 - a.averageGrade4
     );
 
@@ -1957,12 +2001,25 @@ const updateIsRead = async (req, res) => {
 
   try {
     const user = await User.findByPk(userId);
-    if (!user || !user.studentId)
+    if (!user) {
       return res.status(404).json({ message: "Không tìm thấy người dùng" });
-    const n = await Notification.update(
-      { isRead },
-      { where: { id: notificationId, studentId: user.studentId } }
-    );
+    }
+
+    let whereClause = { id: notificationId };
+
+    if (user.studentId) {
+      // Nếu là student, tìm notification theo studentId
+      whereClause.studentId = user.studentId;
+    } else if (user.isAdmin || user.commanderId) {
+      // Nếu là admin/commander, tìm notification theo userId hoặc targetRole ADMIN
+      whereClause[Op.or] = [{ userId: user.id }, { targetRole: "ADMIN" }];
+    } else {
+      return res
+        .status(404)
+        .json({ message: "Người dùng không có quyền truy cập" });
+    }
+
+    const n = await Notification.update({ isRead }, { where: whereClause });
     if (!n[0])
       return res
         .status(404)
@@ -1971,6 +2028,63 @@ const updateIsRead = async (req, res) => {
       .status(200)
       .json({ message: "Cập nhật trạng thái đọc thành công" });
   } catch (err) {
+    console.error("Error updating notification isRead:", err);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+// Đánh dấu tất cả thông báo là đã đọc
+const markAllNotificationsAsRead = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    let updateCount = 0;
+
+    if (user.studentId) {
+      // Nếu là student, cập nhật tất cả notifications của student đó
+      const result = await Notification.update(
+        { isRead: true },
+        {
+          where: {
+            isRead: false,
+            [Op.or]: [
+              { studentId: user.studentId },
+              { userId: user.id },
+              { targetRole: "USER", studentId: user.studentId },
+            ],
+          },
+        }
+      );
+      updateCount = result[0];
+    } else if (user.isAdmin) {
+      // Nếu là admin, cập nhật tất cả notifications dành cho admin
+      const result = await Notification.update(
+        { isRead: true },
+        {
+          where: {
+            isRead: false,
+            [Op.or]: [{ userId: user.id }, { targetRole: "ADMIN" }],
+          },
+        }
+      );
+      updateCount = result[0];
+    } else {
+      return res
+        .status(404)
+        .json({ message: "Người dùng không có quyền truy cập" });
+    }
+
+    return res.status(200).json({
+      message: "Đã đánh dấu tất cả thông báo là đã đọc",
+      count: updateCount,
+    });
+  } catch (err) {
+    console.error("Error marking all notifications as read:", err);
     return res.status(500).json({ message: "Lỗi server" });
   }
 };
@@ -1985,15 +2099,26 @@ const getStudentNotifications = async (req, res) => {
     let notifications = [];
 
     if (user.studentId) {
-      // Nếu là student, lấy notifications của student đó
+      // Nếu là student, lấy notifications của student đó hoặc có userId = user.id
       notifications = await Notification.findAll({
-        where: { studentId: user.studentId },
+        where: {
+          [Op.or]: [
+            { studentId: user.studentId },
+            { userId: user.id },
+            { targetRole: "USER", studentId: user.studentId },
+          ],
+        },
         order: [["createdAt", "DESC"]],
+        limit: 50,
       });
-    } else if (user.isAdmin && user.commanderId) {
-      // Nếu là admin/commander, lấy tất cả notifications
+    } else if (user.isAdmin) {
+      // Nếu là admin, lấy notifications dành cho admin (targetRole = ADMIN hoặc userId = user.id)
       notifications = await Notification.findAll({
+        where: {
+          [Op.or]: [{ userId: user.id }, { targetRole: "ADMIN" }],
+        },
         order: [["createdAt", "DESC"]],
+        limit: 50,
       });
     } else {
       return res
@@ -2003,6 +2128,7 @@ const getStudentNotifications = async (req, res) => {
 
     return res.status(200).json(notifications);
   } catch (err) {
+    console.error("Error getting notifications:", err);
     return res.status(500).json("Lỗi server");
   }
 };
@@ -3846,6 +3972,7 @@ const getAllStudentsGrades = async (req, res) => {
         {
           model: SemesterResult,
           required: false, // LEFT JOIN để lấy cả students không có kết quả
+          // Không cần filter status vì semester_results chỉ chứa dữ liệu đã được duyệt
         },
         {
           model: YearlyResult,
@@ -3898,9 +4025,11 @@ const getAllStudentsGrades = async (req, res) => {
             subjects: r.subjects?.length || 0,
           }));
         }
-        let filteredResults = semesterResults;
+        // semester_results chỉ chứa dữ liệu đã được duyệt, không cần filter status
+        let filteredResults = [...semesterResults];
+
         if (semester || schoolYear) {
-          filteredResults = semesterResults.filter((result) => {
+          filteredResults = filteredResults.filter((result) => {
             let matches = true;
 
             if (semester) {
@@ -3927,38 +4056,38 @@ const getAllStudentsGrades = async (req, res) => {
           gradeHelper.updateCumulativeGrades(filteredResults);
         }
 
-        filteredResults.forEach((result) => {
-          const subjects = Array.isArray(result.subjects)
-            ? result.subjects
-            : [];
+        // Nếu có kết quả học kỳ, xử lý từng kết quả
+        if (filteredResults.length > 0) {
+          filteredResults.forEach((result) => {
+            const subjects = Array.isArray(result.subjects)
+              ? result.subjects
+              : [];
 
-          const normalizedSubjects = subjects.map((s) => {
-            let letter = s.letterGrade;
-            if (!letter) {
-              if (typeof s.gradePoint10 === "number") {
-                letter = gradeHelper.grade10ToLetter(s.gradePoint10);
-              } else if (typeof s.gradePoint4 === "number") {
-                letter = gradeHelper.grade4ToLetter(s.gradePoint4);
+            const normalizedSubjects = subjects.map((s) => {
+              let letter = s.letterGrade;
+              if (!letter) {
+                if (typeof s.gradePoint10 === "number") {
+                  letter = gradeHelper.grade10ToLetter(s.gradePoint10);
+                } else if (typeof s.gradePoint4 === "number") {
+                  letter = gradeHelper.grade4ToLetter(s.gradePoint4);
+                }
               }
-            }
-            const gradePoint4 = gradeHelper.letterToGrade4(letter);
-            const gradePoint10 = gradeHelper.letterToGrade10(letter);
+              const gradePoint4 = gradeHelper.letterToGrade4(letter);
+              const gradePoint10 = gradeHelper.letterToGrade10(letter);
 
-            return {
-              ...(s.toObject?.() || s),
-              letterGrade: letter,
-              gradePoint4,
-              gradePoint10,
-            };
-          });
+              return {
+                ...(s.toObject?.() || s),
+                letterGrade: letter,
+                gradePoint4,
+                gradePoint10,
+              };
+            });
 
-          const failedSubjects =
-            gradeHelper.calculateFailedSubjects(normalizedSubjects);
-          const debtCredits =
-            gradeHelper.calculateDebtCredits(normalizedSubjects);
+            const failedSubjects =
+              gradeHelper.calculateFailedSubjects(normalizedSubjects);
+            const debtCredits =
+              gradeHelper.calculateDebtCredits(normalizedSubjects);
 
-          // Chỉ thêm vào kết quả nếu có subjects data
-          if (normalizedSubjects.length > 0) {
             const learningResult = {
               id: result.id,
               studentId: student.id,
@@ -4004,16 +4133,20 @@ const getAllStudentsGrades = async (req, res) => {
             };
 
             allLearningResults.push(learningResult);
-          } else {
-            console.log(
-              `⚠ Skipping ${student.fullName} - ${result.semester} ${result.schoolYear}: No subjects data`
-            );
-          }
-        });
+          });
+        }
+        // Không thêm học viên chưa có kết quả học tập vào danh sách
       } catch (error) {
         console.error(`Error processing student ${student.id}:`, error);
       }
     }
+
+    // Sắp xếp theo điểm GPA từ cao xuống thấp
+    allLearningResults.sort((a, b) => {
+      const gpaA = parseFloat(a.GPA) || 0;
+      const gpaB = parseFloat(b.GPA) || 0;
+      return gpaB - gpaA; // Cao xuống thấp
+    });
 
     // Tính tổng số students để phân trang (chỉ khi có phân trang)
     if (usePagination) {
@@ -5217,6 +5350,7 @@ const getYearlyStatistics = async (req, res) => {
         {
           model: SemesterResult,
           required: false,
+          // Không cần filter status vì semester_results chỉ chứa dữ liệu đã được duyệt
         },
         {
           model: YearlyResult,
@@ -5224,8 +5358,6 @@ const getYearlyStatistics = async (req, res) => {
         },
       ],
     });
-
-    console.log(`Found ${students.length} students`);
 
     // Load subjects từ subject_results table cho MỌI semester results
     const allSemesterResultIds = students.flatMap((student) =>
@@ -5264,9 +5396,6 @@ const getYearlyStatistics = async (req, res) => {
           sr.subjects = subjectsBySemesterId[sr.id] || [];
         });
 
-        console.log(
-          `Student ${student.fullName}: ${semesterResults.length} semester results`
-        );
         let yearResults;
 
         if (schoolYear) {
@@ -5274,17 +5403,9 @@ const getYearlyStatistics = async (req, res) => {
           yearResults = semesterResults.filter(
             (result) => result.schoolYear === schoolYear
           );
-
-          if (yearResults.length === 0) {
-            continue;
-          }
         } else {
           // Nếu không có schoolYear, lấy tất cả kết quả
           yearResults = semesterResults;
-
-          if (yearResults.length === 0) {
-            continue;
-          }
         }
 
         // Tính toán kết quả
@@ -5366,7 +5487,6 @@ const getYearlyStatistics = async (req, res) => {
             (result) => result.schoolYear === schoolYear
           );
 
-          // Tạo kết quả thống kê năm học
           // Chỉ thêm vào kết quả nếu có subjects data (đã nhập điểm)
           if (allSubjects.length > 0) {
             const yearlyResult = {
@@ -5406,10 +5526,6 @@ const getYearlyStatistics = async (req, res) => {
             };
 
             yearlyResults.push(yearlyResult);
-          } else {
-            console.log(
-              `⚠ Skipping ${student.fullName} - ${schoolYear}: No subjects data`
-            );
           }
         } else {
           // Nếu không có schoolYear, sử dụng dữ liệu từ yearlyResults có sẵn
@@ -5591,6 +5707,13 @@ const getYearlyStatistics = async (req, res) => {
       }
     }
 
+    // Sắp xếp theo điểm GPA từ cao xuống thấp
+    yearlyResults.sort((a, b) => {
+      const gpaA = parseFloat(a.yearlyGPA) || 0;
+      const gpaB = parseFloat(b.yearlyGPA) || 0;
+      return gpaB - gpaA; // Cao xuống thấp
+    });
+
     return res.status(200).json(yearlyResults);
   } catch (error) {
     return res.status(500).json({ message: "Lỗi server" });
@@ -5611,6 +5734,7 @@ const getAllStudentsForPartyRating = async (req, res) => {
         {
           model: SemesterResult,
           required: false,
+          // Không cần filter status vì semester_results chỉ chứa dữ liệu đã được duyệt
         },
         {
           model: YearlyResult,
@@ -5631,18 +5755,23 @@ const getAllStudentsForPartyRating = async (req, res) => {
         const yearlyResults = student.yearly_results || [];
 
         if (schoolYear && schoolYear !== "all" && schoolYear !== "undefined") {
-          // Nếu có schoolYear cụ thể, kiểm tra xem sinh viên có dữ liệu năm đó không
-          const hasDataForYear =
-            semesterResults.some(
-              (result) => result.schoolYear === schoolYear
-            ) ||
-            yearlyResults.some((result) => result.schoolYear === schoolYear);
+          // Nếu có schoolYear cụ thể, chỉ lấy sinh viên có yearly_results hoặc semester_results cho năm đó
+          const hasYearlyDataForYear = yearlyResults.some(
+            (result) => result.schoolYear === schoolYear
+          );
+          const hasSemesterDataForYear = semesterResults.some(
+            (result) => result.schoolYear === schoolYear
+          );
 
-          if (!hasDataForYear) {
+          // Chỉ hiển thị sinh viên có dữ liệu học tập (yearly hoặc semester) cho năm được chọn
+          if (!hasYearlyDataForYear && !hasSemesterDataForYear) {
             continue;
           }
-        } else if (semesterResults.length === 0 && yearlyResults.length === 0) {
-          // Nếu không có dữ liệu học tập nào, tạo entry mặc định
+        } else {
+          // Nếu không chọn năm cụ thể, chỉ lấy sinh viên có ít nhất 1 yearly_results hoặc semester_results
+          if (yearlyResults.length === 0 && semesterResults.length === 0) {
+            continue;
+          }
         }
 
         // Xác định schoolYear cho sinh viên
@@ -5895,6 +6024,7 @@ const getAllStudentsForTrainingRating = async (req, res) => {
         {
           model: SemesterResult,
           required: false,
+          // Không cần filter status vì semester_results chỉ chứa dữ liệu đã được duyệt
         },
         {
           model: YearlyResult,
@@ -5914,14 +6044,21 @@ const getAllStudentsForTrainingRating = async (req, res) => {
         const yearlyResults = student.yearly_results || [];
 
         if (schoolYear && schoolYear !== "all" && schoolYear !== "undefined") {
-          // Nếu có schoolYear cụ thể, kiểm tra xem sinh viên có dữ liệu năm đó không
-          const hasDataForYear =
-            semesterResults.some(
-              (result) => result.schoolYear === schoolYear
-            ) ||
-            yearlyResults.some((result) => result.schoolYear === schoolYear);
+          // Nếu có schoolYear cụ thể, chỉ lấy sinh viên có yearly_results hoặc semester_results cho năm đó
+          const hasYearlyDataForYear = yearlyResults.some(
+            (result) => result.schoolYear === schoolYear
+          );
+          const hasSemesterDataForYear = semesterResults.some(
+            (result) => result.schoolYear === schoolYear
+          );
 
-          if (!hasDataForYear) {
+          // Chỉ hiển thị sinh viên có dữ liệu học tập (yearly hoặc semester) cho năm được chọn
+          if (!hasYearlyDataForYear && !hasSemesterDataForYear) {
+            continue;
+          }
+        } else {
+          // Nếu không chọn năm cụ thể, chỉ lấy sinh viên có ít nhất 1 yearly_results hoặc semester_results
+          if (yearlyResults.length === 0 && semesterResults.length === 0) {
             continue;
           }
         }
@@ -8056,6 +8193,7 @@ module.exports = {
   getTopStudentsByLatestSemester,
   createNotification,
   updateIsRead,
+  markAllNotificationsAsRead,
   getStudentNotifications,
   deleteNotification,
   updateNotification,

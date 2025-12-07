@@ -5,9 +5,17 @@ const CommanderDutySchedule = sequelize.define(
   "CommanderDutySchedule",
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       primaryKey: true,
-      autoIncrement: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    commanderId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "commanders",
+        key: "id",
+      },
     },
     fullName: {
       type: DataTypes.STRING,

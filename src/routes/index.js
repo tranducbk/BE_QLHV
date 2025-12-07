@@ -7,6 +7,7 @@ const achievementRouter = require("./achievementRouter");
 const timeRouter = require("./timeRouter");
 const semesterRouter = require("./semesterRouter");
 const gradeRouter = require("./gradeRouter");
+const gradeApprovalRouter = require("./gradeApprovalRouter");
 
 router.use("/user", userRouter);
 router.use("/student", studentRouter);
@@ -16,5 +17,6 @@ router.use("/achievement", achievementRouter);
 router.use("/time", timeRouter);
 router.use("/semester", semesterRouter);
 router.use("/grade", gradeRouter);
+router.use("/grade-approval", gradeApprovalRouter);
 
 module.exports = router;

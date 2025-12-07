@@ -6,7 +6,12 @@ const {
   YearlyAchievement,
   ScientificInitiative,
   ScientificTopic,
+  Notification,
 } = require("../models");
+const {
+  TARGET_ROLES,
+  NOTIFICATION_TEMPLATES,
+} = require("../helpers/notificationHelper");
 
 /**
  * @swagger
@@ -267,8 +272,16 @@ const addYearlyAchievement = async (req, res) => {
 const addYearlyAchievementByAdmin = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { year, decisionNumber, decisionDate, title, scientific, notes } =
-      req.body;
+    const {
+      year,
+      decisionNumber,
+      decisionDate,
+      title,
+      scientific,
+      notes,
+      hasMinistryReward,
+      hasNationalReward,
+    } = req.body;
 
     const student = await Student.findByPk(studentId);
     if (!student) {
@@ -291,6 +304,8 @@ const addYearlyAchievementByAdmin = async (req, res) => {
       decisionDate: decisionDate ? new Date(decisionDate) : null,
       title,
       notes,
+      hasMinistryReward: hasMinistryReward || false,
+      hasNationalReward: hasNationalReward || false,
     });
 
     if (scientific?.initiatives?.length) {
@@ -314,6 +329,34 @@ const addYearlyAchievementByAdmin = async (req, res) => {
           status: t.status || "pending",
         }))
       );
+    }
+
+    // Tạo thông báo cho học viên
+    try {
+      const studentUser = await User.findOne({
+        where: { studentId: student.id },
+      });
+
+      if (studentUser) {
+        const achievementTitle = title || "Khen thưởng";
+        const notificationData = NOTIFICATION_TEMPLATES.achievementAwarded(
+          achievementTitle,
+          year
+        );
+
+        await Notification.create({
+          studentId: student.id,
+          userId: studentUser.id,
+          targetRole: TARGET_ROLES.USER,
+          title: notificationData.title,
+          content: notificationData.content,
+          type: notificationData.type,
+          link: notificationData.link,
+          relatedId: created.id,
+        });
+      }
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
     }
 
     const resp = await buildAchievementResponse(studentId);
@@ -463,32 +506,35 @@ const updateYearlyAchievementByAdmin = async (req, res) => {
 
     const resp = await buildAchievementResponse(ya.studentId);
 
-    // Tạo thông báo cho sinh viên khi khen thưởng được cập nhật
+    // Tạo thông báo cho học viên khi khen thưởng được cập nhật
     try {
-      const { Notification } = require("../models");
       const student = await Student.findByPk(ya.studentId);
-
       if (student) {
-        const achievementTitle = payload.title || ya.title || "Khen thưởng";
-        await Notification.create({
-          studentId: ya.studentId,
-          type: "achievement",
-          title: "Cập nhật khen thưởng",
-          message: `Khen thưởng "${achievementTitle}" năm ${ya.year} của bạn đã được cập nhật.`,
-          data: JSON.stringify({
-            achievementId: ya.id,
-            year: ya.year,
-            studentId: ya.studentId,
-          }),
-          read: false,
+        const studentUser = await User.findOne({
+          where: { studentId: student.id },
         });
-        console.log(
-          `✅ Created notification for student ${student.fullName} about achievement update`
-        );
+
+        if (studentUser) {
+          const achievementTitle = payload.title || ya.title || "Khen thưởng";
+          const notificationData = NOTIFICATION_TEMPLATES.achievementUpdated(
+            achievementTitle,
+            ya.year
+          );
+
+          await Notification.create({
+            studentId: ya.studentId,
+            userId: studentUser.id,
+            targetRole: TARGET_ROLES.USER,
+            title: notificationData.title,
+            content: notificationData.content,
+            type: notificationData.type,
+            link: notificationData.link,
+            relatedId: ya.id,
+          });
+        }
       }
     } catch (notifError) {
       console.error("Error creating notification:", notifError);
-      // Không throw error để không ảnh hưởng đến việc cập nhật khen thưởng
     }
 
     return res.status(200).json(resp);
@@ -503,11 +549,26 @@ const deleteYearlyAchievement = async (req, res) => {
   try {
     const { studentId, year } = req.params;
 
+    // Lấy thông tin trước khi xóa
+    const ya = await YearlyAchievement.findOne({
+      where: { studentId, year: parseInt(year) },
+    });
+
+    if (!ya) {
+      return res.status(404).json({ message: "Không tìm thấy khen thưởng" });
+    }
+
     await YearlyAchievement.destroy({
       where: { studentId, year: parseInt(year) },
     });
 
-    return res.status(200).json({ message: "Xóa khen thưởng thành công" });
+    // Tính lại stats sau khi xóa - QUAN TRỌNG để cập nhật eligibleForMinistryReward và eligibleForNationalReward
+    const resp = await buildAchievementResponse(studentId);
+
+    return res.status(200).json({
+      message: "Xóa khen thưởng thành công",
+      achievement: resp,
+    });
   } catch (error) {
     console.error("Error deleting achievement:", error);
     return res.status(500).json({ message: "Lỗi server" });
@@ -524,11 +585,50 @@ const deleteYearlyAchievementByAdmin = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy khen thưởng" });
     }
 
+    // Lưu thông tin trước khi xóa để tạo notification và tính lại stats
+    const { studentId, title, year } = ya;
+
     await YearlyAchievement.destroy({
       where: { id: achievementId },
     });
 
-    return res.status(200).json({ message: "Xóa khen thưởng thành công" });
+    // Tính lại stats sau khi xóa - QUAN TRỌNG để cập nhật eligibleForMinistryReward và eligibleForNationalReward
+    const resp = await buildAchievementResponse(studentId);
+
+    // Tạo thông báo cho học viên khi khen thưởng bị xóa
+    try {
+      const student = await Student.findByPk(studentId);
+      if (student) {
+        const studentUser = await User.findOne({
+          where: { studentId: student.id },
+        });
+
+        if (studentUser) {
+          const achievementTitle = title || "Khen thưởng";
+          const notificationData = NOTIFICATION_TEMPLATES.achievementDeleted(
+            achievementTitle,
+            year
+          );
+
+          await Notification.create({
+            studentId: studentId,
+            userId: studentUser.id,
+            targetRole: TARGET_ROLES.USER,
+            title: notificationData.title,
+            content: notificationData.content,
+            type: notificationData.type,
+            link: notificationData.link,
+          });
+        }
+      }
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
+    }
+
+    return res.status(200).json({
+      message: "Xóa khen thưởng thành công",
+      achievement: resp,
+    });
   } catch (error) {
     console.error("Error deleting achievement:", error);
     return res.status(500).json({ message: "Lỗi server" });
@@ -613,97 +713,184 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
     ).length;
   });
 
-  const competitiveYears = yearlyAchievements
-    .filter((a) => a.title === "Chiến sĩ thi đua")
-    .map((a) => a.year)
-    .sort((a, b) => a - b);
+  // Sắp xếp theo năm tăng dần
+  const sortedAchievements = [...yearlyAchievements].sort(
+    (a, b) => a.year - b.year
+  );
 
-  // Tìm chuỗi CHÍNH XÁC 3 năm liên tiếp (không quá 3)
-  let maxConsecutiveCompetitive = 0;
-  let currentConsecutive = 0;
-  let consecutiveStartYear = 0;
-  let validThreeYearStreak = null; // Lưu chuỗi 3 năm hợp lệ cuối cùng
+  // Helper: Kiểm tra năm có NCKH đã duyệt không
+  const hasApprovedResearch = (achievement) => {
+    const approvedCount =
+      (achievement.scientific?.topics || []).filter(
+        (t) => t.status === "approved"
+      ).length +
+      (achievement.scientific?.initiatives || []).filter(
+        (i) => i.status === "approved"
+      ).length;
+    return approvedCount > 0;
+  };
 
-  for (let i = 0; i < competitiveYears.length; i++) {
-    if (i === 0 || competitiveYears[i] === competitiveYears[i - 1] + 1) {
-      if (currentConsecutive === 0) consecutiveStartYear = competitiveYears[i];
-      currentConsecutive++;
+  // Tìm chuỗi CSTĐ liên tiếp THỰC SỰ (có tính việc CSTT sẽ reset chuỗi)
+  // Logic: Nếu năm N có CSTĐ và năm N+1 có CSTT thì chuỗi bị reset
+  let currentStreak = [];
+  let bestStreakForBKBQP = []; // Chuỗi 2 năm CSTĐ + cả 2 năm có NCKH
+  let bestStreakForCSTDTQ = []; // Chuỗi dẫn đến CSTĐTQ
 
-      // Khi đạt 3 năm liên tiếp, lưu lại
-      if (currentConsecutive === 3) {
-        validThreeYearStreak = {
-          startYear: consecutiveStartYear,
-          endYear: competitiveYears[i],
-        };
+  for (let i = 0; i < sortedAchievements.length; i++) {
+    const current = sortedAchievements[i];
+    const prev = i > 0 ? sortedAchievements[i - 1] : null;
+
+    if (current.title === "Chiến sĩ thi đua") {
+      // Kiểm tra có phải năm liên tiếp không
+      if (prev && prev.year === current.year - 1) {
+        if (prev.title === "Chiến sĩ thi đua") {
+          // Năm trước cũng là CSTĐ → tiếp tục chuỗi
+          currentStreak.push(current);
+        } else {
+          // Năm trước là CSTT → Reset chuỗi vì bị gián đoạn
+          currentStreak = [current];
+        }
+      } else if (!prev || prev.year !== current.year - 1) {
+        // Không có năm liền trước hoặc không liên tiếp → bắt đầu chuỗi mới
+        currentStreak = [current];
       }
-      // Nếu quá 3 năm, reset để tìm chuỗi mới
-      if (currentConsecutive > 3) {
-        currentConsecutive = 1;
-        consecutiveStartYear = competitiveYears[i];
-        validThreeYearStreak = null; // Hủy chuỗi cũ vì đã quá 3 năm
+
+      // Kiểm tra điều kiện BK BQP: 2 năm CSTĐ liên tiếp + MỖI năm có NCKH đã duyệt
+      if (currentStreak.length >= 2) {
+        const lastTwo = currentStreak.slice(-2);
+        const bothHaveResearch =
+          hasApprovedResearch(lastTwo[0]) && hasApprovedResearch(lastTwo[1]);
+        if (bothHaveResearch && lastTwo.length > bestStreakForBKBQP.length) {
+          bestStreakForBKBQP = [...lastTwo];
+        }
       }
     } else {
-      currentConsecutive = 1;
-      consecutiveStartYear = competitiveYears[i];
+      // Năm có CSTT → Reset chuỗi CSTĐ liên tiếp
+      currentStreak = [];
     }
-    maxConsecutiveCompetitive = Math.max(
-      maxConsecutiveCompetitive,
-      currentConsecutive
-    );
   }
 
-  // Nếu có chuỗi 3 năm hợp lệ, dùng nó
-  if (validThreeYearStreak) {
-    consecutiveStartYear = validThreeYearStreak.startYear;
+  // Tính số năm CSTĐ liên tiếp hiện tại (từ năm gần nhất)
+  let maxConsecutiveCompetitive = 0;
+  let consecutiveStartYear = 0;
+  let latestStreak = [];
+
+  // Đi ngược từ năm mới nhất để tìm chuỗi hiện tại
+  for (let i = sortedAchievements.length - 1; i >= 0; i--) {
+    const current = sortedAchievements[i];
+    const next = i < sortedAchievements.length - 1 ? sortedAchievements[i + 1] : null;
+
+    if (current.title === "Chiến sĩ thi đua") {
+      if (!next || next.year === current.year + 1) {
+        if (next && next.title !== "Chiến sĩ thi đua") {
+          // Năm sau là CSTT → chuỗi bị gián đoạn tại đây
+          break;
+        }
+        latestStreak.unshift(current);
+        consecutiveStartYear = current.year;
+      } else {
+        break;
+      }
+    } else {
+      // Gặp CSTT → dừng
+      break;
+    }
   }
 
-  const currentYear = yearlyAchievements.length
-    ? Math.max(...yearlyAchievements.map((a) => a.year))
+  maxConsecutiveCompetitive = latestStreak.length;
+
+  // Kiểm tra đã nhận BK BQP chưa
+  const hasMinistryReward = yearlyAchievements.some((a) => a.hasMinistryReward);
+
+  // Năm được phép nhận BK BQP = năm ngay sau 2 năm CSTĐ liên tiếp (có NCKH mỗi năm)
+  // Ví dụ: 2022 CSTĐ+NCKH, 2023 CSTĐ+NCKH → BK BQP chỉ được set cho năm 2024
+  // Năm nhận BK BQP không cần có CSTĐ hay NCKH, chỉ cần 2 năm trước đủ
+  const eligibleMinistryRewardYear = bestStreakForBKBQP.length >= 2
+    ? bestStreakForBKBQP[1].year + 1
     : 0;
-  const secondYearOfStreak = consecutiveStartYear + 1;
-  const thirdYearOfStreak = consecutiveStartYear + 2;
 
+  // Điều kiện BK BQP: 2 năm CSTĐ liên tiếp + MỖI năm có NCKH đã duyệt
+  // Không cần kiểm tra gì ở năm nhận BK BQP
   const eligibleForMinistryReward =
-    maxConsecutiveCompetitive >= 2 &&
-    currentYear >= secondYearOfStreak &&
-    (totalTopics > 0 || totalInitiatives > 0);
+    !hasMinistryReward &&
+    bestStreakForBKBQP.length >= 2;
 
-  // CSTĐ Toàn quân: Cần có NCKH ở năm thứ 3 + NCKH ở 1 trong 2 năm trước đó
+  // Điều kiện CSTĐ Toàn Quân:
+  // 1. Phải có BK BQP trước
+  // 2. Năm nhận BK BQP phải có CSTĐ + NCKH đã duyệt
+  // 3. CSTĐ TQ chỉ được nhận vào năm NGAY SAU năm nhận BK BQP
+  // 4. Nếu bỏ lỡ năm đó thì mất cơ hội
+  let eligibleForNationalReward = false;
   let hasTopicInFirstYear = false;
   let hasTopicInSecondYear = false;
   let hasTopicInThirdYear = false;
+  let ministryRewardYear = 0; // Năm nhận BK BQP
+  let eligibleNationalRewardYear = 0; // Năm duy nhất được phép nhận CSTĐ TQ
 
-  if (maxConsecutiveCompetitive >= 3) {
-    yearlyAchievements.forEach((y) => {
-      // Kiểm tra cả đề tài (topics) và sáng kiến (initiatives) đã duyệt
-      const approvedCount =
-        (y.scientific.topics || []).filter((t) => t.status === "approved")
-          .length +
-        (y.scientific.initiatives || []).filter((i) => i.status === "approved")
-          .length;
+  if (hasMinistryReward) {
+    // Tìm năm nhận BK BQP
+    const ministryRewardAchievement = yearlyAchievements.find(
+      (a) => a.hasMinistryReward
+    );
+    if (ministryRewardAchievement) {
+      ministryRewardYear = ministryRewardAchievement.year;
+      // Năm được phép nhận CSTĐ TQ = năm sau năm nhận BK BQP
+      eligibleNationalRewardYear = ministryRewardYear + 1;
 
-      if (y.year === consecutiveStartYear && approvedCount > 0) {
-        hasTopicInFirstYear = true;
+      // Kiểm tra năm nhận BK BQP có CSTĐ + NCKH không
+      const bkYearAchievement = yearlyAchievements.find(
+        (a) => a.year === ministryRewardYear
+      );
+
+      // Kiểm tra đã nhận CSTĐ TQ chưa
+      const hasNationalReward = yearlyAchievements.some((a) => a.hasNationalReward);
+
+      // Kiểm tra đã có bản ghi cho năm eligibleNationalRewardYear chưa
+      // Nếu có bản ghi cho năm đó mà không có CSTĐ TQ → đã bỏ lỡ
+      const eligibleYearAchievement = yearlyAchievements.find(
+        (a) => a.year === eligibleNationalRewardYear
+      );
+      const alreadyMissed = eligibleYearAchievement && !eligibleYearAchievement.hasNationalReward;
+
+      if (
+        bkYearAchievement &&
+        bkYearAchievement.title === "Chiến sĩ thi đua" &&
+        hasApprovedResearch(bkYearAchievement) &&
+        !hasNationalReward &&
+        !alreadyMissed
+      ) {
+        eligibleForNationalReward = true;
+        hasTopicInSecondYear = true; // Năm nhận BK BQP
       }
-      if (y.year === secondYearOfStreak && approvedCount > 0) {
-        hasTopicInSecondYear = true;
-      }
-      if (y.year === thirdYearOfStreak && approvedCount > 0) {
-        hasTopicInThirdYear = true;
-      }
-    });
+    }
   }
 
-  const eligibleForNationalReward =
-    maxConsecutiveCompetitive >= 3 &&
-    currentYear >= thirdYearOfStreak &&
-    hasTopicInThirdYear &&
-    (hasTopicInFirstYear || hasTopicInSecondYear);
+  const secondYearOfStreak =
+    bestStreakForBKBQP.length >= 2 ? bestStreakForBKBQP[1].year : 0;
+  const thirdYearOfStreak = secondYearOfStreak + 1;
 
   const nextYear = yearlyAchievements.length
     ? Math.max(...yearlyAchievements.map((a) => a.year)) + 1
     : new Date().getFullYear();
-  const lastCompetitiveYear = Math.max(...competitiveYears, 0);
+
+  // Lấy năm CSTĐ gần nhất
+  const competitiveSoldierYears = yearlyAchievements
+    .filter((a) => a.title === "Chiến sĩ thi đua")
+    .map((a) => a.year);
+  const lastCompetitiveYear = Math.max(...competitiveSoldierYears, 0);
+
+  // Kiểm tra năm gần nhất có phải CSTT không (đã reset chuỗi)
+  const mostRecentYear = sortedAchievements.length
+    ? sortedAchievements[sortedAchievements.length - 1]
+    : null;
+  const lastYearWasAdvanced =
+    mostRecentYear && mostRecentYear.title === "Chiến sĩ tiên tiến";
+
+  // Tính số năm CSTĐ cần để đủ điều kiện BK BQP
+  // Nếu năm gần nhất là CSTT, chuỗi đã reset → cần 2 năm mới
+  const yearsToMinistryReward = lastYearWasAdvanced
+    ? 2
+    : Math.max(0, 2 - maxConsecutiveCompetitive);
 
   // Lưu profile tổng hợp
   await AchievementProfile.upsert({
@@ -726,37 +913,48 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
     eligibleForMinistryReward,
     eligibleForNationalReward,
     nextYearRecommendations: {
-      needCompetitiveSoldier: maxConsecutiveCompetitive < 3,
+      needCompetitiveSoldier: !eligibleForMinistryReward,
       needScientificTopic: totalTopics === 0 && totalInitiatives === 0,
-      yearsToMinistryReward: Math.max(0, 2 - maxConsecutiveCompetitive),
-      yearsToNationalReward: Math.max(0, 3 - maxConsecutiveCompetitive),
+      yearsToMinistryReward,
+      yearsToNationalReward: hasMinistryReward ? 0 : yearsToMinistryReward,
       consecutiveCompetitiveYears: maxConsecutiveCompetitive,
       lastCompetitiveYear,
       nextYear,
+      lastYearWasAdvanced, // Chuỗi đã bị reset do năm gần nhất là CSTT
       canContinueStreak:
+        !lastYearWasAdvanced &&
         nextYear === lastCompetitiveYear + 1 &&
-        maxConsecutiveCompetitive % 3 !== 0,
-      // Thông tin chi tiết cho CSTĐ Toàn quân
+        maxConsecutiveCompetitive < 2, // Chỉ cần 2 năm cho BK BQP
+      // Thông tin chi tiết
       nationalRewardDetails: {
         hasTopicInFirstYear,
         hasTopicInSecondYear,
         hasTopicInThirdYear,
+        hasMinistryReward,
         firstYearOfStreak: consecutiveStartYear,
         secondYearOfStreak,
         thirdYearOfStreak,
       },
       // Năm được phép chọn bằng khen
       eligibleYears: {
-        ministryRewardYear: secondYearOfStreak, // Chỉ năm thứ 2
-        nationalRewardYear: thirdYearOfStreak,  // Chỉ năm thứ 3
+        ministryRewardYear: eligibleForMinistryReward ? eligibleMinistryRewardYear : 0,
+        nationalRewardYear: eligibleForNationalReward ? eligibleNationalRewardYear : 0,
       },
+      // Thông tin cho BK BQP
+      eligibleMinistryRewardYear, // Năm duy nhất được phép nhận BK BQP
+      // Thông tin cho CSTĐ TQ
+      ministryRewardYear, // Năm đã nhận BK BQP
+      eligibleNationalRewardYear, // Năm duy nhất được phép nhận CSTĐ TQ
     },
   };
 };
 
 // Helper: dựng payload đề xuất theo API cũ từ response đã tính
 const buildRecommendationsFromResponse = (resp) => {
-  const achievement = resp; // giữ tên biến cũ để tái sử dụng logic
+  const achievement = resp;
+  const consecutiveYears = achievement.nextYearRecommendations?.consecutiveCompetitiveYears || 0;
+  const details = achievement.nextYearRecommendations?.nationalRewardDetails || {};
+  const hasScientific = achievement.totalScientificTopics > 0 || achievement.totalScientificInitiatives > 0;
 
   const recommendations = {
     currentStats: {
@@ -765,174 +963,117 @@ const buildRecommendationsFromResponse = (resp) => {
       totalCompetitiveSoldier: achievement.totalCompetitiveSoldier,
       totalScientificTopics: achievement.totalScientificTopics,
       totalScientificInitiatives: achievement.totalScientificInitiatives,
-      consecutiveCompetitiveYears:
-        achievement.nextYearRecommendations.consecutiveCompetitiveYears,
+      consecutiveCompetitiveYears: consecutiveYears,
     },
     eligibleForMinistryReward: achievement.eligibleForMinistryReward,
     eligibleForNationalReward: achievement.eligibleForNationalReward,
     nextYearRecommendations: achievement.nextYearRecommendations,
     missingRequirements: {
       ministryReward: {
-        needCompetitiveSoldier: Math.max(
-          0,
-          2 - achievement.nextYearRecommendations.consecutiveCompetitiveYears
-        ),
-        needScientificTopic:
-          achievement.totalScientificTopics === 0 &&
-          achievement.totalScientificInitiatives === 0
-            ? 1
-            : 0,
+        needCompetitiveSoldier:
+          achievement.nextYearRecommendations?.yearsToMinistryReward || 0,
+        needScientificTopicPerYear: true, // Mỗi năm CSTĐ cần có NCKH
       },
       nationalReward: {
-        needCompetitiveSoldier: Math.max(
-          0,
-          3 - achievement.nextYearRecommendations.consecutiveCompetitiveYears
-        ),
-        needScientificTopic:
-          achievement.totalScientificTopics === 0 &&
-          achievement.totalScientificInitiatives === 0
-            ? 1
-            : 0,
+        needMinistryRewardFirst: !details.hasMinistryReward,
+        needCompetitiveSoldierInBKYear: true, // Năm nhận BK cần có CSTĐ
+        needScientificInBKYear: true, // Năm nhận BK cần có NCKH
       },
     },
   };
 
+  // Kiểm tra đã nhận bằng khen chưa (dựa trên dữ liệu thực tế)
   const hasMinistryReward = (achievement.yearlyAchievements || []).some(
-    (ya) => ya.hasMinistryReward
+    (ya) => ya.hasMinistryReward === true
   );
   const hasNationalReward = (achievement.yearlyAchievements || []).some(
-    (ya) => ya.hasNationalReward
+    (ya) => ya.hasNationalReward === true
   );
 
   const suggestions = [];
-  if (
-    achievement.totalCompetitiveSoldier === 1 &&
-    (achievement.totalScientificTopics > 0 ||
-      achievement.totalScientificInitiatives > 0)
-  ) {
-    suggestions.push(
-      "Cần thêm 1 năm chiến sĩ thi đua để đủ điều kiện nhận bằng khen Bộ Quốc Phòng"
-    );
-  }
-  if (
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears === 2 &&
-    achievement.totalCompetitiveSoldier >= 2 &&
-    achievement.totalScientificTopics === 0 &&
-    achievement.totalScientificInitiatives === 0
-  ) {
-    suggestions.push(
-      "Cần thêm 1 đề tài hoặc sáng kiến khoa học để đủ điều kiện nhận bằng khen Bộ Quốc Phòng"
-    );
-  }
-  if (
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears === 2 &&
-    achievement.totalCompetitiveSoldier >= 2 &&
-    (achievement.totalScientificTopics > 0 ||
-      achievement.totalScientificInitiatives > 0) &&
-    !achievement.eligibleForMinistryReward
-  ) {
-    suggestions.push("Đã đủ điều kiện nhận bằng khen Bộ Quốc Phòng");
-    if (achievement.nextYearRecommendations.yearsToNationalReward === 1) {
-      suggestions.push(
-        "Cần thêm 1 năm chiến sĩ thi đua để đủ điều kiện nhận CSTĐ Toàn Quân"
-      );
-    }
-  }
-  if (
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears === 2 &&
-    achievement.totalCompetitiveSoldier >= 2 &&
-    (achievement.totalScientificTopics > 0 ||
-      achievement.totalScientificInitiatives > 0) &&
-    achievement.eligibleForMinistryReward &&
-    !achievement.eligibleForNationalReward
-  ) {
-    // Không push "Đã đủ điều kiện BK BQP" nếu đã có BK BQP
-    if (!hasMinistryReward) {
-      suggestions.push("Đã đủ điều kiện nhận bằng khen Bộ Quốc Phòng");
-    }
-    // Gợi ý cho CSTĐ Toàn quân sẽ được xử lý ở phần dưới
-  }
-  // Kiểm tra điều kiện CSTĐ Toàn quân với logic chi tiết
-  if (
-    achievement.nextYearRecommendations.consecutiveCompetitiveYears >= 3 &&
-    !achievement.eligibleForNationalReward
-  ) {
-    const details =
-      achievement.nextYearRecommendations.nationalRewardDetails || {};
-    const missingRequirements = [];
 
-    // Kiểm tra NCKH ở năm thứ 3
-    if (!details.hasTopicInThirdYear) {
-      missingRequirements.push(
-        "1 đề tài/sáng kiến ở năm thứ 3 (" + details.thirdYearOfStreak + ")"
-      );
-    }
+  // ========== XỬ LÝ THEO THỨ TỰ ƯU TIÊN ==========
 
-    // Kiểm tra NCKH ở 1 trong 2 năm trước
-    if (!details.hasTopicInFirstYear && !details.hasTopicInSecondYear) {
-      missingRequirements.push(
-        "1 đề tài/sáng kiến ở năm " +
-          details.firstYearOfStreak +
-          " hoặc năm " +
-          details.secondYearOfStreak
-      );
-    }
-
-    if (missingRequirements.length > 0) {
-      suggestions.push(
-        "Đã có 3 năm chiến sĩ thi đua liên tiếp - Cần thêm: " +
-          missingRequirements.join(" và ")
-      );
-    }
-  }
-
-  if (achievement.eligibleForNationalReward) {
-    suggestions.push("Đã đủ điều kiện nhận CSTĐ Toàn Quân");
-  }
-
+  // 1. Nếu đã nhận CSTĐ Toàn quân → chỉ hiển thị thông báo này
   if (hasNationalReward) {
-    suggestions.length = 0;
     suggestions.push("Đã nhận CSTĐ Toàn Quân");
-  } else if (hasMinistryReward) {
-    // Nếu đã có BK BQP, kiểm tra xem đã đủ 3 năm chưa
-    if (achievement.nextYearRecommendations.consecutiveCompetitiveYears >= 3) {
-      // Đã có 3 năm, chỉ cần kiểm tra NCKH
-      const details =
-        achievement.nextYearRecommendations.nationalRewardDetails || {};
-      const missingRequirements = [];
+    return { ...recommendations, suggestions };
+  }
 
+  // 2. Nếu đã nhận BK BQP → hướng dẫn tiến tới CSTĐ TQ
+  if (hasMinistryReward) {
+    if (achievement.eligibleForNationalReward) {
+      suggestions.push("Đã đủ điều kiện nhận CSTĐ Toàn Quân");
+    } else if (consecutiveYears >= 3) {
+      // Đã có 3 năm liên tiếp, chỉ cần kiểm tra NCKH năm thứ 3
+      // (Năm 1 và 2 chắc chắn đã có NCKH vì đó là điều kiện bắt buộc để nhận BK BQP)
       if (!details.hasTopicInThirdYear) {
-        missingRequirements.push(
-          "1 đề tài/sáng kiến ở năm thứ 3 (" + details.thirdYearOfStreak + ")"
-        );
-      }
-
-      if (!details.hasTopicInFirstYear && !details.hasTopicInSecondYear) {
-        missingRequirements.push(
-          "1 đề tài/sáng kiến ở năm " +
-            details.firstYearOfStreak +
-            " hoặc năm " +
-            details.secondYearOfStreak
-        );
-      }
-
-      if (missingRequirements.length > 0) {
-        suggestions.length = 0;
-        suggestions.push(
-          "Đã có bằng khen Bộ Quốc Phòng - Cần thêm: " +
-            missingRequirements.join(" và ") +
-            " để đủ điều kiện nhận CSTĐ Toàn Quân"
-        );
+        suggestions.push(`Đã có BK của Bộ trưởng BQP - Cần thêm: 1 đề tài/sáng kiến ở năm thứ 3 (${details.thirdYearOfStreak}) để đủ điều kiện nhận CSTĐ Toàn Quân`);
       } else {
-        suggestions.length = 0;
         suggestions.push("Đã đủ điều kiện nhận CSTĐ Toàn Quân");
       }
     } else {
-      suggestions.length = 0;
-      suggestions.push(
-        "Đã có bằng khen Bộ Quốc Phòng - Cần thêm 1 năm chiến sĩ thi đua và 1 đề tài/sáng kiến khoa học để đủ điều kiện nhận CSTĐ Toàn Quân"
-      );
+      // Chưa đủ 3 năm liên tiếp
+      const yearsNeeded = 3 - consecutiveYears;
+      suggestions.push(`Đã có BK của Bộ trưởng BQP - Cần thêm ${yearsNeeded} năm CSTĐ liên tiếp để đủ điều kiện nhận CSTĐ Toàn Quân`);
     }
+    return { ...recommendations, suggestions };
+  }
+
+  // 3. Chưa có bằng khen nào → gợi ý dựa trên tiến độ
+
+  // Kiểm tra chuỗi có bị reset do CSTT không
+  const lastYearWasAdvanced =
+    achievement.nextYearRecommendations?.lastYearWasAdvanced || false;
+
+  // 3a. Đã đủ điều kiện BK BQP (2 năm CSTĐ liên tiếp + MỖI năm có NCKH đã duyệt)
+  if (achievement.eligibleForMinistryReward) {
+    suggestions.push("Đã đủ điều kiện nhận BK của Bộ trưởng BQP");
+    return { ...recommendations, suggestions };
+  }
+
+  // 3b. Thành tích không được duy trì do năm gần nhất là CSTT
+  if (lastYearWasAdvanced) {
+    suggestions.push(
+      "Thành tích CSTĐ liên tục không được duy trì do năm gần nhất cá nhân chỉ đạt Chiến sĩ tiên tiến"
+    );
+    suggestions.push(
+      "Cần 2 năm CSTĐ liên tiếp (mỗi năm có NCKH đã duyệt) để đủ điều kiện nhận BK của Bộ trưởng BQP"
+    );
+    return { ...recommendations, suggestions };
+  }
+
+  // 3c. Có 1 năm CSTĐ
+  if (consecutiveYears === 1) {
+    suggestions.push(
+      "Cần thêm 1 năm CSTĐ liên tiếp để đủ điều kiện nhận BK của Bộ trưởng BQP"
+    );
+    suggestions.push(
+      "(Lưu ý: Cả 2 năm CSTĐ đều cần có NCKH đã duyệt)"
+    );
+    return { ...recommendations, suggestions };
+  }
+
+  // 3d. Có 2 năm CSTĐ liên tiếp nhưng chưa đủ NCKH ở cả 2 năm
+  if (consecutiveYears >= 2 && !achievement.eligibleForMinistryReward) {
+    suggestions.push(
+      "Có 2 năm CSTĐ liên tiếp nhưng chưa đủ NCKH đã duyệt ở cả 2 năm"
+    );
+    suggestions.push(
+      "Cần bổ sung NCKH được duyệt cho các năm CSTĐ còn thiếu"
+    );
+    return { ...recommendations, suggestions };
+  }
+
+  // 3e. Chưa có năm CSTĐ nào
+  if (consecutiveYears === 0) {
+    suggestions.push(
+      "Cần đạt danh hiệu Chiến sĩ thi đua để bắt đầu hành trình khen thưởng"
+    );
+    suggestions.push(
+      "Điều kiện BK của Bộ trưởng BQP: 2 năm CSTĐ liên tiếp + mỗi năm có NCKH đã duyệt"
+    );
+    return { ...recommendations, suggestions };
   }
 
   return { ...recommendations, suggestions };

@@ -42,8 +42,9 @@ const {
   getStudentGradesByStudentId,
   getSemesterGradesByStudentId,
   addSemesterGradesByStudentId,
-  updateSemesterGradesByStudentId,
   deleteSemesterGradesByStudentId,
+  requestUpdateApprovedGrades,
+  requestDeleteApprovedGrades,
 } = require("../controllers/studentController");
 
 // Import từ các controller đã tách
@@ -285,18 +286,25 @@ router.get(
 // Thêm kết quả học tập cho học kỳ
 router.post("/:studentId/grades", verifyToken, addSemesterGradesByStudentId);
 
-// Cập nhật kết quả học tập cho học kỳ
-router.put(
-  "/:studentId/grades/:semester/:schoolYear",
-  verifyToken,
-  updateSemesterGradesByStudentId
-);
-
-// Xóa kết quả học tập cho học kỳ
+// Xóa đề xuất kết quả học tập cho học kỳ (đề xuất PENDING hoặc REJECTED)
 router.delete(
   "/:studentId/grades/:semester/:schoolYear",
   verifyToken,
   deleteSemesterGradesByStudentId
+);
+
+// Yêu cầu CẬP NHẬT kết quả học tập đã duyệt (tạo đề xuất UPDATE)
+router.post(
+  "/:studentId/grades/:semester/:schoolYear/request-update",
+  verifyToken,
+  requestUpdateApprovedGrades
+);
+
+// Yêu cầu XÓA kết quả học tập đã duyệt (tạo đề xuất DELETE)
+router.post(
+  "/:studentId/grades/:semester/:schoolYear/request-delete",
+  verifyToken,
+  requestDeleteApprovedGrades
 );
 
 module.exports = router;

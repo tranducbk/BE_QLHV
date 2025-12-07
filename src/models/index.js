@@ -22,6 +22,8 @@ const YearlyAchievement = require("./yearly_achievement");
 const ScientificInitiative = require("./scientific_initiative");
 const ScientificTopic = require("./scientific_topic");
 const CommanderDutySchedule = require("./commander_duty_schedule");
+const GradeProposal = require("./grade_proposal");
+const ProposalSubjectResult = require("./proposal_subject_result");
 
 // Associations
 // University 1 - n Organization
@@ -150,6 +152,27 @@ User.belongsTo(Student, { foreignKey: "studentId", onDelete: "CASCADE" });
 Commander.hasMany(User, { foreignKey: "commanderId", onDelete: "CASCADE" });
 User.belongsTo(Commander, { foreignKey: "commanderId", onDelete: "CASCADE" });
 
+// Student 1 - n GradeProposal
+Student.hasMany(GradeProposal, {
+  foreignKey: "studentId",
+  onDelete: "CASCADE",
+});
+GradeProposal.belongsTo(Student, { foreignKey: "studentId" });
+
+// GradeProposal 1 - n ProposalSubjectResult
+GradeProposal.hasMany(ProposalSubjectResult, {
+  foreignKey: "proposalId",
+  onDelete: "CASCADE",
+});
+ProposalSubjectResult.belongsTo(GradeProposal, { foreignKey: "proposalId" });
+
+// Commander 1 - n CommanderDutySchedule
+Commander.hasMany(CommanderDutySchedule, {
+  foreignKey: "commanderId",
+  onDelete: "SET NULL",
+});
+CommanderDutySchedule.belongsTo(Commander, { foreignKey: "commanderId" });
+
 module.exports = {
   sequelize,
   University,
@@ -173,4 +196,6 @@ module.exports = {
   ScientificInitiative,
   ScientificTopic,
   CommanderDutySchedule,
+  GradeProposal,
+  ProposalSubjectResult,
 };

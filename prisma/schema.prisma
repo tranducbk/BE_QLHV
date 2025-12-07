@@ -50,14 +50,16 @@ model classes {
 }
 
 model commander_duty_schedules {
-  id          Int      @id @default(autoincrement())
-  fullName    String   @db.VarChar(255)
-  rank        String?  @db.VarChar(255)
-  phoneNumber String?  @db.VarChar(255)
-  position    String?  @db.VarChar(255)
-  workDay     DateTime @db.Timestamptz(6)
-  createdAt   DateTime @db.Timestamptz(6)
-  updatedAt   DateTime @db.Timestamptz(6)
+  id          String     @id @default(uuid()) @db.Uuid
+  commanderId String?    @db.Uuid
+  fullName    String     @db.VarChar(255)
+  rank        String?    @db.VarChar(255)
+  phoneNumber String?    @db.VarChar(255)
+  position    String?    @db.VarChar(255)
+  workDay     DateTime   @db.Timestamptz(6)
+  createdAt   DateTime   @db.Timestamptz(6)
+  updatedAt   DateTime   @db.Timestamptz(6)
+  commander   commanders? @relation(fields: [commanderId], references: [id])
 }
 
 model commanders {
@@ -88,6 +90,7 @@ model commanders {
   createdAt               DateTime? @db.Timestamptz(6)
   updatedAt               DateTime? @db.Timestamptz(6)
   users                   users[]
+  duty_schedules          commander_duty_schedules[]
 }
 
 model cut_rice {
@@ -114,16 +117,19 @@ model education_levels {
 }
 
 model notifications {
-  id        String    @id @db.Uuid
-  studentId String    @db.Uuid
-  title     String    @db.VarChar(255)
-  content   String?
-  type      String?   @db.VarChar(255) // "new_semester", "update_info", "tuition_fee", "party_rating", "training_rating"
-  link      String?   @db.VarChar(255) // URL to navigate when clicked
-  isRead    Boolean?  @default(false)
-  createdAt DateTime? @db.Timestamptz(6)
-  updatedAt DateTime? @db.Timestamptz(6)
-  students  students  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id         String    @id @db.Uuid
+  studentId  String?   @db.Uuid // Student who owns this notification (for backward compatibility)
+  userId     String?   @db.Uuid // User ID for targeted notifications
+  targetRole String?   @db.VarChar(50) // "ADMIN" or "USER" - target audience
+  relatedId  String?   @db.Uuid // Related entity ID (e.g., grade approval ID)
+  title      String    @db.VarChar(255)
+  content    String?
+  type       String?   @db.VarChar(255) // "new_semester", "update_info", "tuition_fee", "grade_proposal", "grade_approved", "grade_rejected", etc.
+  link       String?   @db.VarChar(255) // URL to navigate when clicked
+  isRead     Boolean?  @default(false)
+  createdAt  DateTime? @db.Timestamptz(6)
+  updatedAt  DateTime? @db.Timestamptz(6)
+  students   students? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
 
 model admin_notifications {
@@ -200,6 +206,49 @@ model semester_results {
   @@unique([studentId, semester, schoolYear], map: "semester_results_student_id_semester_school_year")
 }
 
+// Bảng đề xuất kết quả học tập theo kỳ (chờ duyệt)
+model grade_proposals {
+  id                String                     @id @db.Uuid
+  studentId         String                     @db.Uuid
+  semester          String                     @db.VarChar(255)
+  schoolYear        String                     @db.VarChar(255)
+  proposalType      String?                    @default("CREATE") @db.VarChar(50) // CREATE, UPDATE, DELETE
+  totalCredits      Int?                       @default(0)
+  averageGrade4     Float?                     @default(0)
+  averageGrade10    Float?                     @default(0)
+  cumulativeCredits Int?                       @default(0)
+  cumulativeGrade4  Float?                     @default(0)
+  cumulativeGrade10 Float?                     @default(0)
+  debtCredits       Int?                       @default(0)
+  failedSubjects    Int?                       @default(0)
+  status            String?                    @default("PENDING") @db.VarChar(50) // PENDING, APPROVED, REJECTED
+  adminNote         String?                    // Ghi chú của admin khi duyệt/từ chối
+  approvedBy        String?                    @db.Uuid // ID của admin đã duyệt
+  approvedAt        DateTime?                  @db.Timestamptz(6) // Thời gian duyệt
+  createdAt         DateTime?                  @db.Timestamptz(6)
+  updatedAt         DateTime?                  @db.Timestamptz(6)
+  students          students                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  proposal_subjects proposal_subject_results[]
+
+  // Không có unique constraint vì cần lưu lịch sử các đề xuất (REJECTED, APPROVED, PENDING)
+  // Unique constraint chỉ áp dụng cho semester_results (dữ liệu chính thức)
+}
+
+// Bảng môn học trong đề xuất
+model proposal_subject_results {
+  id              String          @id @db.Uuid
+  proposalId      String          @db.Uuid
+  subjectCode     String          @db.VarChar(255)
+  subjectName     String          @db.VarChar(255)
+  credits         Int
+  letterGrade     String          @db.VarChar(255)
+  gradePoint4     Float
+  gradePoint10    Float
+  createdAt       DateTime?       @db.Timestamptz(6)
+  updatedAt       DateTime?       @db.Timestamptz(6)
+  grade_proposals grade_proposals @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+}
+
 model semesters {
   id         String    @id @db.Uuid
   code       String    @db.VarChar(255)
@@ -248,6 +297,7 @@ model students {
   achievement_profiles    achievement_profiles?
   achievements            achievements[]
   cut_rice                cut_rice?
+  grade_proposals         grade_proposals[]
   notifications           notifications[]
   semester_results        semester_results[]
   classes                 classes?              @relation(fields: [classId], references: [id])
@@ -331,7 +381,7 @@ model yearly_achievements {
   year                   Int
   decisionNumber         String?                  @db.VarChar(255)
   decisionDate           DateTime?                @db.Timestamptz(6)
-  title                  String                   @db.VarChar(255)
+  title                  String?                  @db.VarChar(255)
   hasMinistryReward      Boolean?                 @default(false)
   hasNationalReward      Boolean?                 @default(false)
   notes                  String?

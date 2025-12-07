@@ -24,6 +24,15 @@ const NOTIFICATION_TYPES = {
   REGULATION: "regulation",
   REGULATORY_REGIME: "regulatory_regime",
   NOTIFICATION: "notification",
+  // Grade approval workflow
+  GRADE_PROPOSAL: "grade_proposal", // User gửi đề xuất -> Admin nhận
+  GRADE_APPROVED: "grade_approved", // Admin duyệt -> User nhận
+  GRADE_REJECTED: "grade_rejected", // Admin từ chối -> User nhận
+};
+
+const TARGET_ROLES = {
+  ADMIN: "ADMIN",
+  USER: "USER",
 };
 
 /**
@@ -58,6 +67,13 @@ const getDefaultLinkByType = (type) => {
     case "learning_result":
       // Kết quả học tập
       return "/users/semester-results";
+    case NOTIFICATION_TYPES.GRADE_PROPOSAL:
+      // Đề xuất kết quả học tập -> Admin xem trang duyệt
+      return "/admin/proposals/grade-results";
+    case NOTIFICATION_TYPES.GRADE_APPROVED:
+    case NOTIFICATION_TYPES.GRADE_REJECTED:
+      // Kết quả duyệt -> User xem trang quản lý đề xuất
+      return "/users/proposals/grade-results";
     case NOTIFICATION_TYPES.UPDATE_INFO:
     case "profile_update":
       // Thông tin cá nhân (sẽ được thêm userId ở frontend hoặc nơi gọi)
@@ -181,11 +197,28 @@ const NOTIFICATION_TEMPLATES = {
       NOTIFICATION_TYPES.COMMANDER_DUTY
     ),
 
-  achievementAwarded: (achievementName) =>
+  achievementAwarded: (achievementName, year) =>
     createNotificationData(
       "Khen thưởng mới",
-      `Chúc mừng! Bạn đã được trao thưởng: ${achievementName}. Vui lòng kiểm tra chi tiết.`,
-      NOTIFICATION_TYPES.ACHIEVEMENT
+      `Chúc mừng! Bạn đã được thêm khen thưởng "${achievementName}" năm ${year}. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.ACHIEVEMENT,
+      "/users/achievement"
+    ),
+
+  achievementUpdated: (achievementName, year) =>
+    createNotificationData(
+      "Cập nhật khen thưởng",
+      `Khen thưởng "${achievementName}" năm ${year} của bạn đã được cập nhật. Vui lòng kiểm tra chi tiết.`,
+      NOTIFICATION_TYPES.ACHIEVEMENT,
+      "/users/achievement"
+    ),
+
+  achievementDeleted: (achievementName, year) =>
+    createNotificationData(
+      "Xóa khen thưởng",
+      `Khen thưởng "${achievementName}" năm ${year} của bạn đã bị xóa.`,
+      NOTIFICATION_TYPES.ACHIEVEMENT,
+      "/users/achievement"
     ),
 
   regulationUpdate: () =>
@@ -195,12 +228,40 @@ const NOTIFICATION_TEMPLATES = {
       NOTIFICATION_TYPES.REGULATION
     ),
 
+  // Grade approval workflow templates
+  gradeProposal: (studentName, studentId, semester, schoolYear) =>
+    createNotificationData(
+      "Đề xuất kết quả học tập mới",
+      `Học viên ${studentName} (${studentId}) đã gửi đề xuất kết quả học tập ${semester} năm học ${schoolYear}. Vui lòng xem xét và phê duyệt.`,
+      NOTIFICATION_TYPES.GRADE_PROPOSAL,
+      "/admin/proposals/grade-results"
+    ),
+
+  gradeApproved: (semester, schoolYear, adminNote = null) =>
+    createNotificationData(
+      "Đề xuất đã được phê duyệt",
+      `Kết quả học tập ${semester} năm học ${schoolYear} của bạn đã được phê duyệt.${
+        adminNote ? ` Ghi chú: ${adminNote}` : ""
+      }`,
+      NOTIFICATION_TYPES.GRADE_APPROVED,
+      "/users/proposals/grade-results"
+    ),
+
+  gradeRejected: (semester, schoolYear, adminNote) =>
+    createNotificationData(
+      "Đề xuất bị từ chối",
+      `Kết quả học tập ${semester} năm học ${schoolYear} của bạn đã bị từ chối.\nLý do: ${adminNote}`,
+      NOTIFICATION_TYPES.GRADE_REJECTED,
+      "/users/proposals/grade-results"
+    ),
+
   custom: (title, content, type, link = null) =>
     createNotificationData(title, content, type, link),
 };
 
 module.exports = {
   NOTIFICATION_TYPES,
+  TARGET_ROLES,
   createNotificationData,
   getDefaultLinkByType,
   NOTIFICATION_TEMPLATES,
