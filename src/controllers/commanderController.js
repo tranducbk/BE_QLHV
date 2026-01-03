@@ -3757,7 +3757,7 @@ const updateStudentCutRice = async (req, res) => {
         title: notificationData.title,
         content: notificationData.content,
         type: notificationData.type,
-        link: notificationData.link, 
+        link: notificationData.link,
       });
     } catch (notifError) {
       console.error(
@@ -7004,8 +7004,6 @@ const bulkUpdateGraduationDate = async (req, res) => {
         .status(400)
         .json({ message: "Danh sách sinh viên không hợp lệ" });
     }
-
-    // Kiểm tra học viên có tồn tại không
     const students = await Student.findAll({
       where: { id: { [Op.in]: studentIds } },
       attributes: ["id", "enrollment", "graduationDate"],
@@ -7028,9 +7026,7 @@ const bulkUpdateGraduationDate = async (req, res) => {
 
       // Kiểm tra ngày hợp lệ
       if (isNaN(graduationDateObj.getTime())) {
-        return res
-          .status(400)
-          .json({ message: "Ngày ra trường không hợp lệ" });
+        return res.status(400).json({ message: "Ngày ra trường không hợp lệ" });
       }
 
       // Kiểm tra ngày ra trường không được quá xa trong tương lai (10 năm)
