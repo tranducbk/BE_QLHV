@@ -20,7 +20,7 @@ const corsOptions = {
       "https://fe-student-manager.vercel.app",
       "https://fe-qlhv-ahnzq9nap-tran-ducs-projects-6b0bdbb3.vercel.app", // Domain mới của Vercel
       "http://localhost:3000",
-      "http://localhost:3002",
+      "http://localhost:4000",
     ];
 
     if (allowedOrigins.indexOf(origin) !== -1) {
@@ -38,6 +38,13 @@ const corsOptions = {
     "token",
     "x-access-token",
     "Cookie",
+    "x-uploadthing-package",
+    "x-uploadthing-version",
+    "x-uploadthing-file-name",
+    "x-uploadthing-file-size",
+    "x-uploadthing-file-type",
+    "traceparent",
+    "b3",
   ],
   exposedHeaders: ["Set-Cookie"], // Cho phép frontend đọc Set-Cookie header
   preflightContinue: false, // Pass preflight response to next handler
@@ -51,6 +58,7 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
 // Add additional CORS headers middleware as backup
+// Đặc biệt xử lý cho UploadThing routes
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
@@ -68,10 +76,19 @@ app.use((req, res, next) => {
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, DELETE, PATCH, OPTIONS"
     );
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, token, x-access-token, Cookie"
-    );
+
+    // Cho UploadThing routes, cho phép tất cả headers cần thiết
+    if (req.path?.startsWith("/api/uploadthing")) {
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, token, x-access-token, Cookie, x-uploadthing-package, x-uploadthing-version, x-uploadthing-file-name, x-uploadthing-file-size, x-uploadthing-file-type, traceparent, b3, x-uploadthing-*"
+      );
+    } else {
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, token, x-access-token, Cookie, x-uploadthing-package, x-uploadthing-version, x-uploadthing-file-name, x-uploadthing-file-size, x-uploadthing-file-type, traceparent, b3"
+      );
+    }
     res.header("Access-Control-Expose-Headers", "Set-Cookie");
   }
 
@@ -104,6 +121,17 @@ app.use(
     explorer: true,
     customCss: ".swagger-ui .topbar { display: none }",
     customSiteTitle: "Student Manager API",
+  })
+);
+
+// UploadThing route handler
+const { createRouteHandler } = require("uploadthing/express");
+const { uploadRouter } = require("./uploadthing");
+
+app.use(
+  "/api/uploadthing",
+  createRouteHandler({
+    router: uploadRouter,
   })
 );
 

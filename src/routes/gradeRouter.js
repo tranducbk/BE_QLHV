@@ -15,16 +15,23 @@ const {
   calculateAverage,
   getSemesterGradesByStudentId,
 } = require("../controllers/gradeController");
-const {
-  uploadGradeFile,
-  getGradeFile,
-  uploadFileMiddleware,
-} = require("../controllers/gradeFileController");
+const { getGradeFile, uploadGradeFile } = require("../controllers/gradeFileController");
 
-router.post("/upload-file", verifyToken, uploadFileMiddleware, uploadGradeFile);
+// ===== ROUTES CỤ THỂ (phải đặt trước routes có parameters) =====
+
+// Route upload file - DEPRECATED: đã chuyển sang UploadThing SDK
+// Giữ lại để tránh lỗi routing và báo cho frontend biết
+router.post("/upload-file", verifyToken, uploadGradeFile);
 
 // Route xem file - không yêu cầu authentication (optional) để có thể mở trong tab mới
 router.get("/file/:fileName", optionalVerify, getGradeFile);
+
+// Utility routes (đặt trước routes có parameters)
+router.get("/info/:letterGrade", verifyToken, getGradeInfo);
+router.post("/convert", verifyToken, convertGrade);
+router.post("/calculate-average", verifyToken, calculateAverage);
+
+// ===== ROUTES CÓ PARAMETERS (đặt sau routes cụ thể) =====
 
 router.get("/:userId", verifyToken, getStudentGrades);
 
@@ -65,15 +72,5 @@ router.get(
   getSemesterGradesByStudentId
 );
 
-// ===== UTILITY ROUTES =====
-
-// Lấy thông tin điểm
-router.get("/info/:letterGrade", verifyToken, getGradeInfo);
-
-// Chuyển đổi điểm
-router.post("/convert", verifyToken, convertGrade);
-
-// Tính điểm trung bình
-router.post("/calculate-average", verifyToken, calculateAverage);
 
 module.exports = router;
