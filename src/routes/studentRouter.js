@@ -286,7 +286,15 @@ router.get(
 // Thêm kết quả học tập cho học kỳ
 router.post("/:studentId/grades", verifyToken, addSemesterGradesByStudentId);
 
+// Xóa đề xuất theo proposalId (phải đặt trước route semester/schoolYear để tránh conflict)
+router.delete(
+  "/:studentId/grades/proposal/:proposalId",
+  verifyToken,
+  deleteSemesterGradesByStudentId
+);
+
 // Xóa đề xuất kết quả học tập cho học kỳ (đề xuất PENDING hoặc REJECTED)
+// Fallback: xóa bằng semester/schoolYear nếu không có proposalId
 router.delete(
   "/:studentId/grades/:semester/:schoolYear",
   verifyToken,

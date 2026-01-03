@@ -10,6 +10,7 @@ const sequelize = new Sequelize(DATABASE_URL, {
       rejectUnauthorized: false,
     },
   },
+  // PostgreSQL mặc định hỗ trợ UTF-8, không cần cấu hình charset
 });
 
 async function connectPostgreSQL() {

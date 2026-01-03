@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const { verifyToken } = require("../middlewares/verify");
+const { optionalVerify } = require("../middlewares/optionalVerify");
 const {
   getStudentGrades,
   getSemesterGrades,
@@ -14,28 +15,26 @@ const {
   calculateAverage,
   getSemesterGradesByStudentId,
 } = require("../controllers/gradeController");
+const {
+  uploadGradeFile,
+  getGradeFile,
+  uploadFileMiddleware,
+} = require("../controllers/gradeFileController");
 
-// ===== ROUTES CHO KẾT QUẢ HỌC TẬP (USER - sử dụng userId) =====
+router.post("/upload-file", verifyToken, uploadFileMiddleware, uploadGradeFile);
 
-// Lấy kết quả học tập của sinh viên (theo userId)
+// Route xem file - không yêu cầu authentication (optional) để có thể mở trong tab mới
+router.get("/file/:fileName", optionalVerify, getGradeFile);
+
 router.get("/:userId", verifyToken, getStudentGrades);
 
-// Lấy kết quả học tập theo học kỳ (theo userId)
-router.get(
-  "/:userId/:semester/:schoolYear",
-  verifyToken,
-  getSemesterGrades
-);
+router.get("/:userId/:semester/:schoolYear", verifyToken, getSemesterGrades);
 
 // Thêm kết quả học tập cho học kỳ (theo userId)
 router.post("/:userId", verifyToken, addSemesterGrades);
 
 // Cập nhật kết quả học tập cho học kỳ (theo userId)
-router.put(
-  "/:userId/:semester/:schoolYear",
-  verifyToken,
-  updateSemesterGrades
-);
+router.put("/:userId/:semester/:schoolYear", verifyToken, updateSemesterGrades);
 
 // Xóa kết quả học tập cho học kỳ (theo userId)
 router.delete(
@@ -45,18 +44,10 @@ router.delete(
 );
 
 // Xóa kết quả học tập theo ID (để tương thích với frontend cũ)
-router.delete(
-  "/:userId/learn/:learnId",
-  verifyToken,
-  deleteSemesterGradesById
-);
+router.delete("/:userId/learn/:learnId", verifyToken, deleteSemesterGradesById);
 
 // Xóa kết quả năm học
-router.delete(
-  "/:userId/yearly/:schoolYear",
-  verifyToken,
-  deleteYearlyResult
-);
+router.delete("/:userId/yearly/:schoolYear", verifyToken, deleteYearlyResult);
 
 // Tính toán lại CPA cho tất cả các năm học
 router.post(

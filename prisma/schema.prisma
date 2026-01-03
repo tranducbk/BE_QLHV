@@ -225,6 +225,7 @@ model grade_proposals {
   adminNote         String?                    // Ghi chú của admin khi duyệt/từ chối
   approvedBy        String?                    @db.Uuid // ID của admin đã duyệt
   approvedAt        DateTime?                  @db.Timestamptz(6) // Thời gian duyệt
+  attachmentFile    String?                    @db.VarChar(255) // Tên file đính kèm
   createdAt         DateTime?                  @db.Timestamptz(6)
   updatedAt         DateTime?                  @db.Timestamptz(6)
   students          students                   @relation(fields: [studentId], references: [id], onDelete: Cascade)

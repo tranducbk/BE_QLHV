@@ -15,6 +15,10 @@ const {
   TARGET_ROLES,
   NOTIFICATION_TEMPLATES,
 } = require("../helpers/notificationHelper");
+const {
+  getSemesterResult,
+  copyProposalSubjectsToResult,
+} = require("../helpers/gradeApprovalHelper");
 
 // Trạng thái phê duyệt (viết hoa)
 const APPROVAL_STATUS = {
@@ -88,6 +92,7 @@ const getPendingGrades = async (req, res) => {
       averageGrade10: r.averageGrade10,
       status: r.status,
       adminNote: r.adminNote,
+      attachmentFile: r.attachmentFile,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
@@ -172,6 +177,7 @@ const getAllGradesWithStatus = async (req, res) => {
       averageGrade10: r.averageGrade10,
       status: r.status,
       adminNote: r.adminNote,
+      attachmentFile: r.attachmentFile,
       approvedBy: r.approvedBy,
       approvedAt: r.approvedAt,
       createdAt: r.createdAt,
@@ -220,7 +226,9 @@ const approveGrade = async (req, res) => {
     }
 
     if (proposal.status === APPROVAL_STATUS.APPROVED) {
-      return res.status(400).json({ message: "Đề xuất đã được duyệt trước đó" });
+      return res
+        .status(400)
+        .json({ message: "Đề xuất đã được duyệt trước đó" });
     }
 
     const proposalType = proposal.proposalType || "CREATE";
@@ -230,17 +238,15 @@ const approveGrade = async (req, res) => {
     // Xử lý theo loại đề xuất
     if (proposalType === "DELETE") {
       // === XÓA KẾT QUẢ ===
-      const existingResult = await SemesterResult.findOne({
-        where: {
-          studentId: proposal.studentId,
-          semester: proposal.semester,
-          schoolYear: proposal.schoolYear,
-        },
-      });
+      const existingResult = await getSemesterResult(
+        proposal.studentId,
+        proposal.semester,
+        proposal.schoolYear
+      );
 
       if (!existingResult) {
         return res.status(404).json({
-          message: `Không tìm thấy kết quả học tập để xóa`,
+          message: `Không tìm thấy kết quả học tập để xóa. Kết quả có thể đã bị xóa trước đó.`,
         });
       }
 
@@ -253,47 +259,27 @@ const approveGrade = async (req, res) => {
       await existingResult.destroy();
 
       message = "Đã phê duyệt yêu cầu xóa kết quả học tập thành công";
-
     } else if (proposalType === "UPDATE") {
       // === CẬP NHẬT KẾT QUẢ ===
-      const existingResult = await SemesterResult.findOne({
-        where: {
-          studentId: proposal.studentId,
-          semester: proposal.semester,
-          schoolYear: proposal.schoolYear,
-        },
-      });
+      const existingResult = await getSemesterResult(
+        proposal.studentId,
+        proposal.semester,
+        proposal.schoolYear
+      );
 
       if (!existingResult) {
         return res.status(404).json({
-          message: `Không tìm thấy kết quả học tập để cập nhật`,
+          message: `Không tìm thấy kết quả học tập để cập nhật. Kết quả có thể đã bị xóa trước đó.`,
         });
       }
-
-      // Lấy subjects từ proposal
-      const proposalSubjects = await ProposalSubjectResult.findAll({
-        where: { proposalId: proposal.id },
-      });
 
       // Xóa subjects cũ
       await SubjectResult.destroy({
         where: { semesterResultId: existingResult.id },
       });
 
-      // Thêm subjects mới từ proposal
-      if (proposalSubjects.length > 0) {
-        await SubjectResult.bulkCreate(
-          proposalSubjects.map((s) => ({
-            semesterResultId: existingResult.id,
-            subjectCode: s.subjectCode,
-            subjectName: s.subjectName,
-            credits: s.credits,
-            letterGrade: s.letterGrade,
-            gradePoint4: s.gradePoint4,
-            gradePoint10: s.gradePoint10,
-          }))
-        );
-      }
+      // Copy subjects mới từ proposal
+      await copyProposalSubjectsToResult(proposal.id, existingResult.id);
 
       // Cập nhật semester result
       await existingResult.update({
@@ -306,27 +292,19 @@ const approveGrade = async (req, res) => {
 
       semesterResult = existingResult;
       message = "Đã phê duyệt yêu cầu cập nhật kết quả học tập thành công";
-
     } else {
       // === TẠO MỚI (CREATE) ===
-      const existingResult = await SemesterResult.findOne({
-        where: {
-          studentId: proposal.studentId,
-          semester: proposal.semester,
-          schoolYear: proposal.schoolYear,
-        },
-      });
+      const existingResult = await getSemesterResult(
+        proposal.studentId,
+        proposal.semester,
+        proposal.schoolYear
+      );
 
       if (existingResult) {
         return res.status(400).json({
-          message: `Đã có kết quả học tập chính thức cho học kỳ ${proposal.semester} năm ${proposal.schoolYear}`,
+          message: `Đã có kết quả học tập chính thức cho học kỳ ${proposal.semester} năm ${proposal.schoolYear}. Không thể phê duyệt đề xuất tạo mới.`,
         });
       }
-
-      // Lấy subjects từ proposal
-      const proposalSubjects = await ProposalSubjectResult.findAll({
-        where: { proposalId: proposal.id },
-      });
 
       // Tạo semester result từ proposal
       semesterResult = await SemesterResult.create({
@@ -344,19 +322,7 @@ const approveGrade = async (req, res) => {
       });
 
       // Copy subjects từ proposal sang semester result
-      if (proposalSubjects.length > 0) {
-        await SubjectResult.bulkCreate(
-          proposalSubjects.map((s) => ({
-            semesterResultId: semesterResult.id,
-            subjectCode: s.subjectCode,
-            subjectName: s.subjectName,
-            credits: s.credits,
-            letterGrade: s.letterGrade,
-            gradePoint4: s.gradePoint4,
-            gradePoint10: s.gradePoint10,
-          }))
-        );
-      }
+      await copyProposalSubjectsToResult(proposal.id, semesterResult.id);
 
       message = "Đã phê duyệt đề xuất kết quả học tập thành công";
     }
@@ -386,10 +352,18 @@ const approveGrade = async (req, res) => {
 
           if (proposalType === "DELETE") {
             notificationTitle = "Yêu cầu xóa đã được duyệt";
-            notificationContent = `Yêu cầu xóa kết quả học tập ${proposal.semester} năm học ${proposal.schoolYear} của bạn đã được phê duyệt.${adminNote ? ` Ghi chú: ${adminNote}` : ""}`;
+            notificationContent = `Yêu cầu xóa kết quả học tập ${
+              proposal.semester
+            } năm học ${proposal.schoolYear} của bạn đã được phê duyệt.${
+              adminNote ? ` Ghi chú: ${adminNote}` : ""
+            }`;
           } else if (proposalType === "UPDATE") {
             notificationTitle = "Yêu cầu cập nhật đã được duyệt";
-            notificationContent = `Yêu cầu cập nhật kết quả học tập ${proposal.semester} năm học ${proposal.schoolYear} của bạn đã được phê duyệt.${adminNote ? ` Ghi chú: ${adminNote}` : ""}`;
+            notificationContent = `Yêu cầu cập nhật kết quả học tập ${
+              proposal.semester
+            } năm học ${proposal.schoolYear} của bạn đã được phê duyệt.${
+              adminNote ? ` Ghi chú: ${adminNote}` : ""
+            }`;
           } else {
             const notificationData = NOTIFICATION_TEMPLATES.gradeApproved(
               proposal.semester,
@@ -418,11 +392,13 @@ const approveGrade = async (req, res) => {
 
     return res.status(200).json({
       message,
-      semesterResult: semesterResult ? {
-        id: semesterResult.id,
-        semester: semesterResult.semester,
-        schoolYear: semesterResult.schoolYear,
-      } : null,
+      semesterResult: semesterResult
+        ? {
+            id: semesterResult.id,
+            semester: semesterResult.semester,
+            schoolYear: semesterResult.schoolYear,
+          }
+        : null,
       proposal: {
         id: proposal.id,
         proposalType: proposalType,
@@ -447,7 +423,9 @@ const bulkApproveGrades = async (req, res) => {
     const adminId = req.user?.id;
 
     if (!Array.isArray(proposalIds) || proposalIds.length === 0) {
-      return res.status(400).json({ message: "Danh sách đề xuất không hợp lệ" });
+      return res
+        .status(400)
+        .json({ message: "Danh sách đề xuất không hợp lệ" });
     }
 
     const proposals = await GradeProposal.findAll({
@@ -465,7 +443,9 @@ const bulkApproveGrades = async (req, res) => {
     });
 
     if (proposals.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy đề xuất chờ duyệt" });
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy đề xuất chờ duyệt" });
     }
 
     const approvedProposals = [];
@@ -604,7 +584,9 @@ const bulkRejectGrades = async (req, res) => {
     }
 
     if (!Array.isArray(proposalIds) || proposalIds.length === 0) {
-      return res.status(400).json({ message: "Danh sách đề xuất không hợp lệ" });
+      return res
+        .status(400)
+        .json({ message: "Danh sách đề xuất không hợp lệ" });
     }
 
     const proposals = await GradeProposal.findAll({
@@ -622,7 +604,9 @@ const bulkRejectGrades = async (req, res) => {
     });
 
     if (proposals.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy đề xuất chờ duyệt" });
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy đề xuất chờ duyệt" });
     }
 
     // Cập nhật tất cả thành rejected
@@ -716,7 +700,9 @@ const rejectGrade = async (req, res) => {
     }
 
     if (proposal.status === APPROVAL_STATUS.REJECTED) {
-      return res.status(400).json({ message: "Đề xuất đã bị từ chối trước đó" });
+      return res
+        .status(400)
+        .json({ message: "Đề xuất đã bị từ chối trước đó" });
     }
 
     // Cập nhật trạng thái thành rejected
@@ -923,9 +909,7 @@ const recalculateApprovedYearlyResults = async (studentId) => {
     });
 
     const yearlyGPA =
-      yearlyTotalCredits > 0
-        ? yearlyTotalGradePoints4 / yearlyTotalCredits
-        : 0;
+      yearlyTotalCredits > 0 ? yearlyTotalGradePoints4 / yearlyTotalCredits : 0;
     const yearlyGrade10 =
       yearlyTotalCredits > 0
         ? yearlyTotalGradePoints10 / yearlyTotalCredits
@@ -962,7 +946,9 @@ const recalculateApprovedYearlyResults = async (studentId) => {
     else if (yearlyGrade10 >= 4.0) academicStatus = "Yếu";
     else academicStatus = "Kém";
 
-    const studentLevel = gradeHelper.calculateStudentLevel(yearCumulativeCredits);
+    const studentLevel = gradeHelper.calculateStudentLevel(
+      yearCumulativeCredits
+    );
 
     const [yr, created] = await YearlyResult.findOrCreate({
       where: { studentId, schoolYear },

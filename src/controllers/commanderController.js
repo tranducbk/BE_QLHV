@@ -31,6 +31,10 @@ const {
   AchievementProfile,
   SemesterResult,
 } = require("../models");
+const {
+  NOTIFICATION_TEMPLATES,
+  TARGET_ROLES,
+} = require("../helpers/notificationHelper");
 const classService = require("../services/classService");
 const autoCutRiceService = require("../services/autoCutRiceService");
 const gradeHelper = require("../helpers/gradeHelper");
@@ -1600,7 +1604,9 @@ const getLearningClassification = async (req, res) => {
     return res.status(200).json(data);
   } catch (error) {
     console.error("Error in getLearningClassification:", error);
-    return res.status(500).json({ message: "Lỗi server", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server", error: error.message });
   }
 };
 
@@ -3741,6 +3747,25 @@ const updateStudentCutRice = async (req, res) => {
       notes: "Được chỉnh sửa bởi admin",
     });
 
+    // Gửi thông báo cho học viên về việc cập nhật lịch cắt cơm (theo thứ trong tuần)
+    try {
+      const notificationData = NOTIFICATION_TEMPLATES.cutRiceUpdated();
+      await Notification.create({
+        studentId: student.id,
+        userId: null,
+        targetRole: TARGET_ROLES.USER,
+        title: notificationData.title,
+        content: notificationData.content,
+        type: notificationData.type,
+        link: notificationData.link, 
+      });
+    } catch (notifError) {
+      console.error(
+        "Error creating notification for updated cut rice:",
+        notifError
+      );
+    }
+
     return res.status(200).json({
       message: "Cập nhật lịch cắt cơm thành công",
       cutRice: currentCutRice,
@@ -5724,7 +5749,7 @@ const getYearlyStatistics = async (req, res) => {
 const getAllStudentsForPartyRating = async (req, res) => {
   try {
     const { schoolYear, page, pageSize } = req.query;
-    
+
     // Chỉ áp dụng phân trang nếu có tham số page hoặc pageSize
     const usePagination = page || pageSize;
     const parsedPage = page ? parseInt(page) : 1;
@@ -5842,7 +5867,8 @@ const getAllStudentsForPartyRating = async (req, res) => {
               partyRating: yearlyResult?.partyRating
                 ? {
                     rating: yearlyResult.partyRating,
-                    decisionNumber: yearlyResult.partyRatingDecisionNumber || "",
+                    decisionNumber:
+                      yearlyResult.partyRatingDecisionNumber || "",
                   }
                 : null,
             };
@@ -6979,10 +7005,60 @@ const bulkUpdateGraduationDate = async (req, res) => {
         .json({ message: "Danh sách sinh viên không hợp lệ" });
     }
 
+    // Kiểm tra học viên có tồn tại không
+    const students = await Student.findAll({
+      where: { id: { [Op.in]: studentIds } },
+      attributes: ["id", "enrollment", "graduationDate"],
+    });
+
+    if (students.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy sinh viên nào" });
+    }
+
+    if (students.length !== studentIds.length) {
+      return res.status(400).json({
+        message: `Chỉ tìm thấy ${students.length}/${studentIds.length} sinh viên`,
+      });
+    }
+
     // Cho phép graduationDate là null hoặc undefined để đánh dấu sinh viên chưa ra trường
     let updateData = {};
     if (graduationDate) {
-      updateData.graduationDate = new Date(graduationDate);
+      const graduationDateObj = new Date(graduationDate);
+
+      // Kiểm tra ngày hợp lệ
+      if (isNaN(graduationDateObj.getTime())) {
+        return res
+          .status(400)
+          .json({ message: "Ngày ra trường không hợp lệ" });
+      }
+
+      // Kiểm tra ngày ra trường không được quá xa trong tương lai (10 năm)
+      const maxFutureDate = new Date();
+      maxFutureDate.setFullYear(maxFutureDate.getFullYear() + 10);
+      if (graduationDateObj > maxFutureDate) {
+        return res.status(400).json({
+          message: "Ngày ra trường không được quá xa trong tương lai",
+        });
+      }
+
+      // Kiểm tra ngày ra trường phải sau ngày nhập học
+      const invalidStudents = students.filter((student) => {
+        if (student.enrollment) {
+          const enrollmentYear = parseInt(student.enrollment);
+          const enrollmentDate = new Date(enrollmentYear, 0, 1); // Ngày 1/1 của năm nhập học
+          return graduationDateObj < enrollmentDate;
+        }
+        return false;
+      });
+
+      if (invalidStudents.length > 0) {
+        return res.status(400).json({
+          message: `Ngày ra trường phải sau ngày nhập học. Có ${invalidStudents.length} sinh viên vi phạm.`,
+        });
+      }
+
+      updateData.graduationDate = graduationDateObj;
     } else {
       updateData.graduationDate = null;
     }

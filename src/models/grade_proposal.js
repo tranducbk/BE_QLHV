@@ -31,6 +31,11 @@ const GradeProposal = sequelize.define(
     adminNote: { type: DataTypes.TEXT, allowNull: true },
     approvedBy: { type: DataTypes.UUID, allowNull: true },
     approvedAt: { type: DataTypes.DATE, allowNull: true },
+    attachmentFile: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      // Không cần field mapping vì database dùng camelCase
+    },
     createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     updatedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   },

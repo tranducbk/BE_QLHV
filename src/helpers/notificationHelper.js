@@ -183,10 +183,10 @@ const NOTIFICATION_TEMPLATES = {
       NOTIFICATION_TYPES.TIME_TABLE
     ),
 
-  cutRiceUpdated: (date) =>
+  cutRiceUpdated: () =>
     createNotificationData(
       "Cập nhật lịch cắt cơm",
-      `Lịch cắt cơm ngày ${date} đã được cập nhật. Vui lòng kiểm tra chi tiết.`,
+      "Lịch cắt cơm trong tuần đã được cập nhật. Vui lòng kiểm tra chi tiết.",
       NOTIFICATION_TYPES.CUT_RICE
     ),
 

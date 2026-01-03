@@ -15,6 +15,12 @@ const {
   TARGET_ROLES,
   NOTIFICATION_TEMPLATES,
 } = require("../helpers/notificationHelper");
+const {
+  checkPendingProposal,
+  validateSubjects,
+  processSubjects,
+  notifyAdminsAboutProposal,
+} = require("../helpers/gradeProposalHelper");
 
 /**
  * @swagger
@@ -1549,6 +1555,7 @@ const getStudentGradesByStudentId = async (req, res) => {
       failedSubjects: r.failedSubjects,
       status: r.status,
       adminNote: r.adminNote,
+      attachmentFile: r.attachmentFile,
       approvedBy: r.approvedBy,
       approvedAt: r.approvedAt,
       createdAt: r.createdAt,
@@ -1628,7 +1635,7 @@ const getStudentGradesByStudentId = async (req, res) => {
 const addSemesterGradesByStudentId = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { semester, schoolYear, subjects } = req.body;
+    const { semester, schoolYear, subjects, attachmentFile } = req.body;
 
     const student = await Student.findByPk(studentId);
     if (!student) {
@@ -1642,26 +1649,12 @@ const addSemesterGradesByStudentId = async (req, res) => {
 
     const formattedSemester = gradeHelper.formatSemester(semester);
 
-    // Kiểm tra xem đã có kết quả chính thức cho học kỳ này chưa
-    const existingResult = await SemesterResult.findOne({
-      where: { studentId, semester: formattedSemester, schoolYear },
-    });
-
-    if (existingResult) {
-      return res.status(400).json({
-        message: `Đã có kết quả học tập chính thức cho học kỳ ${semester} năm ${schoolYear}`,
-      });
-    }
-
-    // Kiểm tra xem đã có đề xuất PENDING cho học kỳ này chưa
-    const existingPendingProposal = await GradeProposal.findOne({
-      where: {
-        studentId,
-        semester: formattedSemester,
-        schoolYear,
-        status: "PENDING",
-      },
-    });
+    // Kiểm tra xem đã có đề xuất PENDING (bất kể loại nào) cho học kỳ này chưa
+    const existingPendingProposal = await checkPendingProposal(
+      studentId,
+      semester,
+      schoolYear
+    );
 
     if (existingPendingProposal) {
       return res.status(400).json({
@@ -1669,65 +1662,14 @@ const addSemesterGradesByStudentId = async (req, res) => {
       });
     }
 
-    // Kiểm tra xem đã có đề xuất APPROVED cho học kỳ này chưa
-    const existingApprovedProposal = await GradeProposal.findOne({
-      where: {
-        studentId,
-        semester: formattedSemester,
-        schoolYear,
-        status: "APPROVED",
-      },
-    });
-
-    if (existingApprovedProposal) {
-      return res.status(400).json({
-        message: `Đề xuất kết quả học tập cho học kỳ ${semester} năm ${schoolYear} đã được phê duyệt.`,
-      });
-    }
-
-    // Nếu có đề xuất REJECTED -> vẫn cho tạo mới (giữ lại bản ghi cũ để lưu lịch sử)
-
     // Validate tất cả môn học trước
-    for (const subject of subjects) {
-      const grade10 = parseFloat(subject.gradePoint10);
-      if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
-        return res.status(400).json({
-          message: `Điểm hệ 10 của môn "${
-            subject.subjectName || subject.subjectCode
-          }" phải từ 0 đến 10`,
-        });
-      }
-      const credits = parseInt(subject.credits);
-      if (isNaN(credits) || credits <= 0) {
-        return res.status(400).json({
-          message: `Số tín chỉ của môn "${
-            subject.subjectName || subject.subjectCode
-          }" không hợp lệ`,
-        });
-      }
+    const validation = validateSubjects(subjects);
+    if (!validation.valid) {
+      return res.status(400).json({ message: validation.message });
     }
 
     // Xử lý dữ liệu môn học
-    const processedSubjects = subjects.map((subject) => {
-      const { subjectCode, subjectName } = subject;
-      const credits = parseInt(subject.credits);
-      const gradePoint10 = parseFloat(subject.gradePoint10);
-
-      // Tính điểm chữ từ điểm hệ 10
-      const letterGrade = gradeHelper.grade10ToLetter(gradePoint10);
-
-      // Tính điểm hệ 4 từ điểm chữ
-      const gradePoint4 = gradeHelper.letterToGrade4(letterGrade);
-
-      return {
-        subjectCode: subjectCode || "",
-        subjectName: subjectName || "",
-        credits,
-        letterGrade,
-        gradePoint4,
-        gradePoint10,
-      };
-    });
+    const processedSubjects = processSubjects(subjects);
 
     // Kiểm tra người gọi là admin hay user
     const currentUser = req.user;
@@ -1793,6 +1735,7 @@ const addSemesterGradesByStudentId = async (req, res) => {
         cumulativeGrade4: 0,
         cumulativeGrade10: 0,
         status: "PENDING",
+        attachmentFile: attachmentFile || null,
       });
 
       if (processedSubjects.length) {
@@ -1802,35 +1745,13 @@ const addSemesterGradesByStudentId = async (req, res) => {
       }
 
       // Tạo thông báo cho tất cả admin
-      try {
-        const admins = await User.findAll({
-          where: { isAdmin: true },
-        });
-
-        const notificationData = NOTIFICATION_TEMPLATES.gradeProposal(
-          student.fullName,
-          student.studentId,
-          formattedSemester,
-          schoolYear
-        );
-
-        // Tạo notification cho từng admin
-        const notifications = admins.map((admin) => ({
-          userId: admin.id,
-          targetRole: TARGET_ROLES.ADMIN,
-          title: notificationData.title,
-          content: notificationData.content,
-          type: notificationData.type,
-          link: notificationData.link,
-          relatedId: proposal.id,
-        }));
-
-        if (notifications.length > 0) {
-          await Notification.bulkCreate(notifications);
-        }
-      } catch (notifError) {
-        console.error("Error creating notifications for admins:", notifError);
-      }
+      await notifyAdminsAboutProposal(
+        student,
+        formattedSemester,
+        schoolYear,
+        "CREATE",
+        proposal.id
+      );
 
       // Lấy lại proposal với subjects để trả về frontend
       const createdProposal = await GradeProposal.findByPk(proposal.id);
@@ -1864,7 +1785,7 @@ const addSemesterGradesByStudentId = async (req, res) => {
 const requestUpdateApprovedGrades = async (req, res) => {
   try {
     const { studentId, semester, schoolYear } = req.params;
-    const { subjects } = req.body;
+    const { subjects, attachmentFile } = req.body;
     const jwtUser = req.user;
 
     const student = await Student.findByPk(studentId);
@@ -1882,6 +1803,19 @@ const requestUpdateApprovedGrades = async (req, res) => {
 
     const formattedSemester = gradeHelper.formatSemester(semester);
 
+    // Kiểm tra xem đã có đề xuất PENDING (bất kể loại nào) cho học kỳ này chưa
+    const existingPendingProposal = await checkPendingProposal(
+      studentId,
+      semester,
+      schoolYear
+    );
+
+    if (existingPendingProposal) {
+      return res.status(400).json({
+        message: `Đã có đề xuất cho học kỳ ${semester} năm ${schoolYear} đang chờ phê duyệt.`,
+      });
+    }
+
     // Kiểm tra xem có kết quả chính thức không
     const existingResult = await SemesterResult.findOne({
       where: { studentId, semester: formattedSemester, schoolYear },
@@ -1893,50 +1827,14 @@ const requestUpdateApprovedGrades = async (req, res) => {
       });
     }
 
-    // Kiểm tra xem đã có đề xuất PENDING cho học kỳ này chưa
-    const existingPendingProposal = await GradeProposal.findOne({
-      where: { studentId, semester: formattedSemester, schoolYear, status: "PENDING" },
-    });
-
-    if (existingPendingProposal) {
-      return res.status(400).json({
-        message: `Đã có đề xuất cho học kỳ ${semester} năm ${schoolYear} đang chờ phê duyệt.`,
-      });
-    }
-
     // Validate môn học
-    for (const subject of subjects) {
-      const grade10 = parseFloat(subject.gradePoint10);
-      if (isNaN(grade10) || grade10 < 0 || grade10 > 10) {
-        return res.status(400).json({
-          message: `Điểm hệ 10 của môn "${subject.subjectName || subject.subjectCode}" phải từ 0 đến 10`,
-        });
-      }
-      const credits = parseInt(subject.credits);
-      if (isNaN(credits) || credits <= 0) {
-        return res.status(400).json({
-          message: `Số tín chỉ của môn "${subject.subjectName || subject.subjectCode}" không hợp lệ`,
-        });
-      }
+    const validation = validateSubjects(subjects);
+    if (!validation.valid) {
+      return res.status(400).json({ message: validation.message });
     }
 
     // Xử lý dữ liệu môn học
-    const processedSubjects = subjects.map((subject) => {
-      const { subjectCode, subjectName } = subject;
-      const credits = parseInt(subject.credits);
-      const gradePoint10 = parseFloat(subject.gradePoint10);
-      const letterGrade = gradeHelper.grade10ToLetter(gradePoint10);
-      const gradePoint4 = gradeHelper.letterToGrade4(letterGrade);
-
-      return {
-        subjectCode: subjectCode || "",
-        subjectName: subjectName || "",
-        credits,
-        letterGrade,
-        gradePoint4,
-        gradePoint10,
-      };
-    });
+    const processedSubjects = processSubjects(subjects);
 
     // Tạo đề xuất UPDATE
     const proposal = await GradeProposal.create({
@@ -1950,6 +1848,7 @@ const requestUpdateApprovedGrades = async (req, res) => {
       debtCredits: gradeHelper.calculateDebtCredits(processedSubjects),
       failedSubjects: gradeHelper.calculateFailedSubjects(processedSubjects),
       status: "PENDING",
+      attachmentFile: attachmentFile || null,
     });
 
     // Tạo các môn học trong đề xuất
@@ -1960,23 +1859,13 @@ const requestUpdateApprovedGrades = async (req, res) => {
     }
 
     // Gửi thông báo cho admin
-    try {
-      const adminUsers = await User.findAll({ where: { isAdmin: true } });
-      for (const admin of adminUsers) {
-        await Notification.create({
-          userId: admin.id,
-          studentId: null,
-          title: "Yêu cầu cập nhật kết quả học tập",
-          content: `Học viên ${student.fullName} (${student.studentId}) yêu cầu cập nhật kết quả ${formattedSemester} năm học ${schoolYear}. Vui lòng xem xét và phê duyệt.`,
-          type: "grade_proposal",
-          link: "/admin/proposals/grade-results",
-          isRead: false,
-          targetRole: "ADMIN",
-        });
-      }
-    } catch (notifError) {
-      console.error("Error creating notifications for admins:", notifError);
-    }
+    await notifyAdminsAboutProposal(
+      student,
+      formattedSemester,
+      schoolYear,
+      "UPDATE",
+      proposal.id
+    );
 
     // Lấy lại proposal với subjects để trả về frontend
     const createdProposal = await GradeProposal.findByPk(proposal.id);
@@ -1985,7 +1874,8 @@ const requestUpdateApprovedGrades = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: "Đã gửi yêu cầu cập nhật kết quả học tập. Vui lòng chờ Chỉ huy phê duyệt.",
+      message:
+        "Đã gửi yêu cầu cập nhật kết quả học tập. Vui lòng chờ Chỉ huy phê duyệt.",
       proposal: {
         ...createdProposal.toJSON(),
         subjects: createdSubjects.map((s) => ({
@@ -2008,7 +1898,7 @@ const requestUpdateApprovedGrades = async (req, res) => {
 const requestDeleteApprovedGrades = async (req, res) => {
   try {
     const { studentId, semester, schoolYear } = req.params;
-    const { reason } = req.body; // Lý do xóa
+    const { reason, attachmentFile } = req.body; // Lý do xóa và file minh chứng
     const jwtUser = req.user;
 
     const student = await Student.findByPk(studentId);
@@ -2026,6 +1916,19 @@ const requestDeleteApprovedGrades = async (req, res) => {
 
     const formattedSemester = gradeHelper.formatSemester(semester);
 
+    // Kiểm tra xem đã có đề xuất PENDING (bất kể loại nào) cho học kỳ này chưa
+    const existingPendingProposal = await checkPendingProposal(
+      studentId,
+      semester,
+      schoolYear
+    );
+
+    if (existingPendingProposal) {
+      return res.status(400).json({
+        message: `Đã có đề xuất cho học kỳ ${semester} năm ${schoolYear} đang chờ phê duyệt.`,
+      });
+    }
+
     // Kiểm tra xem có kết quả chính thức không
     const existingResult = await SemesterResult.findOne({
       where: { studentId, semester: formattedSemester, schoolYear },
@@ -2034,17 +1937,6 @@ const requestDeleteApprovedGrades = async (req, res) => {
     if (!existingResult) {
       return res.status(404).json({
         message: `Không tìm thấy kết quả học tập chính thức cho học kỳ ${semester} năm ${schoolYear} để xóa`,
-      });
-    }
-
-    // Kiểm tra xem đã có đề xuất PENDING cho học kỳ này chưa
-    const existingPendingProposal = await GradeProposal.findOne({
-      where: { studentId, semester: formattedSemester, schoolYear, status: "PENDING" },
-    });
-
-    if (existingPendingProposal) {
-      return res.status(400).json({
-        message: `Đã có đề xuất cho học kỳ ${semester} năm ${schoolYear} đang chờ phê duyệt.`,
       });
     }
 
@@ -2066,6 +1958,7 @@ const requestDeleteApprovedGrades = async (req, res) => {
       failedSubjects: existingResult.failedSubjects,
       status: "PENDING",
       adminNote: reason ? `Lý do xóa: ${reason}` : null, // Lưu lý do xóa
+      attachmentFile: attachmentFile || null,
     });
 
     // Tạo các môn học trong đề xuất (copy từ kết quả hiện tại)
@@ -2084,26 +1977,18 @@ const requestDeleteApprovedGrades = async (req, res) => {
     }
 
     // Gửi thông báo cho admin
-    try {
-      const adminUsers = await User.findAll({ where: { isAdmin: true } });
-      for (const admin of adminUsers) {
-        await Notification.create({
-          userId: admin.id,
-          studentId: null,
-          title: "Yêu cầu xóa kết quả học tập",
-          content: `Học viên ${student.fullName} (${student.studentId}) yêu cầu xóa kết quả ${formattedSemester} năm học ${schoolYear}.${reason ? `\nLý do: ${reason}` : ""}\nVui lòng xem xét và phê duyệt.`,
-          type: "grade_proposal",
-          link: "/admin/proposals/grade-results",
-          isRead: false,
-          targetRole: "ADMIN",
-        });
-      }
-    } catch (notifError) {
-      console.error("Error creating notifications for admins:", notifError);
-    }
+    await notifyAdminsAboutProposal(
+      student,
+      formattedSemester,
+      schoolYear,
+      "DELETE",
+      proposal.id,
+      reason
+    );
 
     return res.status(201).json({
-      message: "Đã gửi yêu cầu xóa kết quả học tập. Vui lòng chờ Chỉ huy phê duyệt.",
+      message:
+        "Đã gửi yêu cầu xóa kết quả học tập. Vui lòng chờ Chỉ huy phê duyệt.",
       proposal: {
         ...proposal.toJSON(),
         subjects: existingSubjects.map((s) => ({
@@ -2125,8 +2010,10 @@ const requestDeleteApprovedGrades = async (req, res) => {
 // Xóa đề xuất kết quả học tập cho học kỳ bằng studentId (user xóa đề xuất của mình)
 const deleteSemesterGradesByStudentId = async (req, res) => {
   try {
-    const { studentId, semester, schoolYear } = req.params;
+    const { studentId, semester, schoolYear, proposalId } = req.params;
     const jwtUser = req.user;
+    const fs = require("fs").promises;
+    const path = require("path");
 
     const student = await Student.findByPk(studentId);
     if (!student) {
@@ -2141,17 +2028,58 @@ const deleteSemesterGradesByStudentId = async (req, res) => {
       });
     }
 
-    const formattedSemester = gradeHelper.formatSemester(semester);
+    let proposal;
 
-    // User chỉ xóa được đề xuất trong bảng grade_proposals
-    const proposal = await GradeProposal.findOne({
-      where: { studentId, semester: formattedSemester, schoolYear },
-    });
+    // Nếu có proposalId, tìm trực tiếp theo ID (chính xác nhất)
+    if (proposalId) {
+      proposal = await GradeProposal.findByPk(proposalId);
 
-    if (!proposal) {
-      return res.status(404).json({
-        message: `Không tìm thấy đề xuất kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
+      if (!proposal) {
+        return res.status(404).json({
+          message: "Không tìm thấy đề xuất",
+        });
+      }
+
+      // Kiểm tra proposal có thuộc về student này không
+      if (proposal.studentId !== student.id) {
+        return res.status(403).json({
+          message: "Bạn không có quyền xóa đề xuất này",
+        });
+      }
+    } else {
+      // Nếu không có proposalId, tìm theo semester và schoolYear
+      const formattedSemester = gradeHelper.formatSemester(semester);
+
+      // Tìm đề xuất PENDING hoặc REJECTED (ưu tiên PENDING)
+      // Vì có thể có nhiều proposal cho cùng một kỳ (ví dụ: DELETE đã APPROVED và CREATE đang PENDING)
+      proposal = await GradeProposal.findOne({
+        where: {
+          studentId,
+          semester: formattedSemester,
+          schoolYear,
+          status: "PENDING",
+        },
+        order: [["createdAt", "DESC"]], // Lấy proposal mới nhất nếu có nhiều PENDING
       });
+
+      // Nếu không có PENDING, tìm REJECTED
+      if (!proposal) {
+        proposal = await GradeProposal.findOne({
+          where: {
+            studentId,
+            semester: formattedSemester,
+            schoolYear,
+            status: "REJECTED",
+          },
+          order: [["createdAt", "DESC"]], // Lấy proposal mới nhất
+        });
+      }
+
+      if (!proposal) {
+        return res.status(404).json({
+          message: `Không tìm thấy đề xuất kết quả học tập có thể xóa cho học kỳ ${semester} năm ${schoolYear}`,
+        });
+      }
     }
 
     // Chỉ cho phép xóa đề xuất PENDING hoặc REJECTED
@@ -2161,6 +2089,9 @@ const deleteSemesterGradesByStudentId = async (req, res) => {
       });
     }
 
+    // Lưu tên file đính kèm trước khi xóa proposal
+    const attachmentFileName = proposal.attachmentFile;
+
     // Xóa tất cả subjects liên quan
     await ProposalSubjectResult.destroy({
       where: { proposalId: proposal.id },
@@ -2168,6 +2099,40 @@ const deleteSemesterGradesByStudentId = async (req, res) => {
 
     // Xóa proposal
     await proposal.destroy();
+
+    // Xóa file đính kèm nếu có (chỉ xóa nếu không có proposal nào khác sử dụng file này)
+    if (attachmentFileName) {
+      try {
+        // Kiểm tra xem file có được sử dụng bởi proposal khác không
+        const otherProposal = await GradeProposal.findOne({
+          where: { attachmentFile: attachmentFileName },
+        });
+
+        // Chỉ xóa file nếu không có proposal nào khác sử dụng
+        if (!otherProposal) {
+          const filePath = path.join(
+            process.cwd(),
+            "uploads",
+            "grade-files",
+            attachmentFileName
+          );
+
+          // Kiểm tra file có tồn tại trước khi xóa
+          try {
+            await fs.access(filePath);
+            await fs.unlink(filePath);
+          } catch (fileError) {
+            // File không tồn tại hoặc đã bị xóa, bỏ qua
+            console.log(
+              `File ${attachmentFileName} không tồn tại hoặc đã bị xóa`
+            );
+          }
+        }
+      } catch (fileError) {
+        // Lỗi khi xóa file, nhưng không ảnh hưởng đến việc xóa proposal
+        console.error("Error deleting attachment file:", fileError);
+      }
+    }
 
     return res.status(200).json({
       message: `Đã xóa đề xuất kết quả học tập cho học kỳ ${semester} năm ${schoolYear}`,
