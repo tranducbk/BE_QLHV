@@ -85,7 +85,7 @@ const getDefaultLinkByType = (type) => {
       return "/users/tuition-fee";
     case NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL:
       // Đề xuất học phí -> Admin xem trang quản lý học phí
-      return "/admin/tuition-fee";
+      return "/admin/tuition-fees";
     case NOTIFICATION_TYPES.PARTY_RATING:
     case NOTIFICATION_TYPES.TRAINING_RATING:
     case "yearly_statistics":
@@ -265,7 +265,7 @@ const NOTIFICATION_TEMPLATES = {
       "Đề xuất học phí mới",
       `Học viên ${studentName} (${studentId}) đã thêm học phí ${semester} năm học ${schoolYear}: ${amount?.toLocaleString("vi-VN") || 0} VNĐ. Vui lòng xem xét.`,
       NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL,
-      "/admin/tuition-fee"
+      "/admin/tuition-fees"
     ),
 
   tuitionFeeProposalUpdated: (studentName, studentId, semester, schoolYear) =>
@@ -273,7 +273,7 @@ const NOTIFICATION_TEMPLATES = {
       "Cập nhật học phí",
       `Học viên ${studentName} (${studentId}) đã cập nhật học phí ${semester} năm học ${schoolYear}. Vui lòng xem xét.`,
       NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL,
-      "/admin/tuition-fee"
+      "/admin/tuition-fees"
     ),
 
   custom: (title, content, type, link = null) =>
