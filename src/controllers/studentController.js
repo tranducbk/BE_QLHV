@@ -9,7 +9,12 @@ const {
   CutRice,
   TuitionFee,
   TimeTable,
+  Notification,
 } = require("../models");
+const {
+  TARGET_ROLES,
+  NOTIFICATION_TEMPLATES,
+} = require("../helpers/notificationHelper");
 
 // Helper function để kiểm tra quyền truy cập
 const checkStudentAccess = async (req, studentId) => {
@@ -435,6 +440,37 @@ const addTuitionFee = async (req, res) => {
       content: req.body.content,
       status: req.body.status,
     });
+
+    // Gửi thông báo cho tất cả admin
+    try {
+      const student = await Student.findByPk(studentId);
+      const adminUsers = await User.findAll({ where: { isAdmin: true } });
+
+      if (student && adminUsers.length > 0) {
+        const notificationData = NOTIFICATION_TEMPLATES.tuitionFeeProposalCreated(
+          student.fullName,
+          student.studentId,
+          semester,
+          schoolYear,
+          req.body.totalAmount
+        );
+
+        for (const admin of adminUsers) {
+          await Notification.create({
+            userId: admin.id,
+            targetRole: TARGET_ROLES.ADMIN,
+            title: notificationData.title,
+            content: notificationData.content,
+            type: notificationData.type,
+            link: notificationData.link,
+            relatedId: created.id,
+          });
+        }
+      }
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
+    }
+
     return res.status(201).json(created);
   } catch (error) {
     return res.status(500).json({ message: "Lỗi server" });
@@ -727,6 +763,38 @@ const updateTuitionFee = async (req, res) => {
     }
 
     await fee.update(req.body);
+
+    // Gửi thông báo cho tất cả admin
+    try {
+      const student = await Student.findByPk(studentId);
+      const adminUsers = await User.findAll({ where: { isAdmin: true } });
+
+      if (student && adminUsers.length > 0) {
+        const updatedSemester = semester || fee.semester;
+        const updatedSchoolYear = schoolYear || fee.schoolYear;
+        const notificationData = NOTIFICATION_TEMPLATES.tuitionFeeProposalUpdated(
+          student.fullName,
+          student.studentId,
+          updatedSemester,
+          updatedSchoolYear
+        );
+
+        for (const admin of adminUsers) {
+          await Notification.create({
+            userId: admin.id,
+            targetRole: TARGET_ROLES.ADMIN,
+            title: notificationData.title,
+            content: notificationData.content,
+            type: notificationData.type,
+            link: notificationData.link,
+            relatedId: fee.id,
+          });
+        }
+      }
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
+    }
+
     return res.status(200).json(fee);
   } catch (error) {
     return res.status(500).json({ message: "Lỗi server" });

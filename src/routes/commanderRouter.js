@@ -64,6 +64,8 @@ const {
   getExcelPoliticalManagement,
   getAvailableSchoolYearsForPoliticalManagement,
   getExcelTimeTableWithCutRice,
+  exportLearningResultsExcel,
+  exportYearlyStatisticsExcel,
 } = require("../controllers/commanderController");
 
 const storage = multer.memoryStorage();
@@ -102,6 +104,22 @@ router.get(
   verifyToken,
   isAdmin,
   getExcelTimeTableWithCutRice
+);
+
+// Export learning results to Excel
+router.get(
+  "/learning-results/excel",
+  verifyToken,
+  isAdmin,
+  exportLearningResultsExcel
+);
+
+// Export yearly statistics to Excel
+router.get(
+  "/yearly-statistics/excel",
+  verifyToken,
+  isAdmin,
+  exportYearlyStatisticsExcel
 );
 
 // Update student rating

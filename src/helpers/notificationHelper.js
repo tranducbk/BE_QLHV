@@ -9,6 +9,7 @@ const NOTIFICATION_TYPES = {
   UPDATE_INFO: "update_info",
   PROFILE_UPDATE: "profile_update",
   TUITION_FEE: "tuition_fee",
+  TUITION_FEE_PROPOSAL: "tuition_fee_proposal", // User đề xuất học phí -> Admin nhận
   PAYMENT: "payment",
   PARTY_RATING: "party_rating",
   TRAINING_RATING: "training_rating",
@@ -82,6 +83,9 @@ const getDefaultLinkByType = (type) => {
     case "payment":
       // Học phí
       return "/users/tuition-fee";
+    case NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL:
+      // Đề xuất học phí -> Admin xem trang quản lý học phí
+      return "/admin/tuition-fee";
     case NOTIFICATION_TYPES.PARTY_RATING:
     case NOTIFICATION_TYPES.TRAINING_RATING:
     case "yearly_statistics":
@@ -253,6 +257,23 @@ const NOTIFICATION_TEMPLATES = {
       `Kết quả học tập ${semester} năm học ${schoolYear} của bạn đã bị từ chối.\nLý do: ${adminNote}`,
       NOTIFICATION_TYPES.GRADE_REJECTED,
       "/users/proposals/grade-results"
+    ),
+
+  // Tuition fee proposal templates
+  tuitionFeeProposalCreated: (studentName, studentId, semester, schoolYear, amount) =>
+    createNotificationData(
+      "Đề xuất học phí mới",
+      `Học viên ${studentName} (${studentId}) đã thêm học phí ${semester} năm học ${schoolYear}: ${amount?.toLocaleString("vi-VN") || 0} VNĐ. Vui lòng xem xét.`,
+      NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL,
+      "/admin/tuition-fee"
+    ),
+
+  tuitionFeeProposalUpdated: (studentName, studentId, semester, schoolYear) =>
+    createNotificationData(
+      "Cập nhật học phí",
+      `Học viên ${studentName} (${studentId}) đã cập nhật học phí ${semester} năm học ${schoolYear}. Vui lòng xem xét.`,
+      NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL,
+      "/admin/tuition-fee"
     ),
 
   custom: (title, content, type, link = null) =>
