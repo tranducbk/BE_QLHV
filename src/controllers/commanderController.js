@@ -2775,7 +2775,7 @@ const getPdfLearningResult = async (req, res) => {
       results.slice(startIndex, startIndex + 16).forEach((result) => {
         const row = [
           result.fullName,
-          result.university.replace("Đại học ", "").trim(),
+          (result.university || "").trim(),
           result.GPA !== undefined ? result.GPA.toFixed(2) : "N/A",
           result.CPA !== undefined ? result.CPA.toFixed(2) : "N/A",
           result.cumulativeCredit !== undefined
@@ -3298,7 +3298,7 @@ const getPdfTuitionFee = async (req, res) => {
         const row = [
           result.unit || "",
           result.fullName,
-          (result.university || "").replace("Đại học ", "").trim(),
+          (result.university || "").trim(),
           (result.content || "")
             .replace("Tổng ", "")
             .replace("học kỳ", "HK")
@@ -6383,6 +6383,8 @@ const getWordTuitionFee = async (req, res) => {
     const semesterQuery = req.query.semester;
     const schoolYearQuery = req.query.schoolYear;
     const unitQuery = req.query.unit;
+    const studentIdsQuery = req.query.studentIds;
+    const statusQuery = req.query.status;
 
     // Lấy tất cả tuition fees trực tiếp từ model TuitionFee
     let allTuitionFees;
@@ -6411,7 +6413,10 @@ const getWordTuitionFee = async (req, res) => {
         ],
       });
     } catch (dbError) {
-      console.error("Lỗi kết nối database khi lấy thông tin học viên:", dbError);
+      console.error(
+        "Lỗi kết nối database khi lấy thông tin học viên:",
+        dbError
+      );
       return res.status(500).json({
         message: "Lỗi kết nối database. Vui lòng kiểm tra kết nối database.",
         error: dbError.message,
@@ -6495,6 +6500,29 @@ const getWordTuitionFee = async (req, res) => {
       });
     }
 
+    // Lọc theo học viên cụ thể (nếu có)
+    if (studentIdsQuery && studentIdsQuery.trim() !== "") {
+      const studentIdsArray = studentIdsQuery.split(",").map((id) => id.trim());
+      tuitionFees = tuitionFees.filter((tuitionFee) =>
+        studentIdsArray.includes(tuitionFee.studentId)
+      );
+    }
+
+    // Lọc theo trạng thái thanh toán (nếu có)
+    if (statusQuery && statusQuery.trim() !== "") {
+      if (statusQuery === "paid") {
+        tuitionFees = tuitionFees.filter((tuitionFee) => {
+          const s = String(tuitionFee.status || "").toLowerCase();
+          return s.includes("đã thanh toán") || s.includes("đã đóng");
+        });
+      } else if (statusQuery === "unpaid") {
+        tuitionFees = tuitionFees.filter((tuitionFee) => {
+          const s = String(tuitionFee.status || "").toLowerCase();
+          return s.includes("chưa thanh toán") || s.includes("chưa đóng");
+        });
+      }
+    }
+
     // Sắp xếp theo thứ tự từ L1 đến L6, sau đó theo tên học viên
     tuitionFees.sort((a, b) => {
       const unitOrder = {
@@ -6521,7 +6549,8 @@ const getWordTuitionFee = async (req, res) => {
     if (tuitionFees.length === 0) {
       // Trả về JSON error thay vì 404 để frontend có thể hiển thị thông báo
       return res.status(400).json({
-        message: "Không có dữ liệu học phí phù hợp với bộ lọc đã chọn. Vui lòng thử lại với bộ lọc khác.",
+        message:
+          "Không có dữ liệu học phí phù hợp với bộ lọc đã chọn. Vui lòng thử lại với bộ lọc khác.",
         success: false,
         details: {
           totalBeforeFilter: totalBeforeFilter,
@@ -6530,6 +6559,8 @@ const getWordTuitionFee = async (req, res) => {
             semester: semesterQuery || "all",
             schoolYear: schoolYearQuery || "all",
             unit: unitQuery || "all",
+            studentIds: studentIdsQuery || "all",
+            status: statusQuery || "all",
           },
         },
       });
@@ -6587,6 +6618,21 @@ const getWordTuitionFee = async (req, res) => {
       fileName += `_${unitArray.join("_")}`;
     } else {
       fileName += "_tat_ca_don_vi";
+    }
+
+    // Thêm thông tin học viên cụ thể
+    if (studentIdsQuery && studentIdsQuery.trim() !== "") {
+      const studentIdsArray = studentIdsQuery.split(",");
+      fileName += `_${studentIdsArray.length}_hoc_vien`;
+    }
+
+    // Thêm thông tin trạng thái
+    if (statusQuery && statusQuery.trim() !== "") {
+      const statusMap = {
+        paid: "da_thanh_toan",
+        unpaid: "chua_thanh_toan",
+      };
+      fileName += `_${statusMap[statusQuery] || statusQuery}`;
     }
 
     fileName += ".docx";
@@ -6662,7 +6708,7 @@ const getWordTuitionFee = async (req, res) => {
           new TableCell({
             children: [
               new Paragraph({
-                children: [new TextRun({ text: "Trường Đại học", bold: true })],
+                children: [new TextRun({ text: "Cơ sở đào tạo", bold: true })],
                 alignment: AlignmentType.CENTER,
               }),
             ],
@@ -6704,17 +6750,17 @@ const getWordTuitionFee = async (req, res) => {
     tuitionFees.forEach((tuitionFee) => {
       const formatCurrency = (amount) => {
         if (!amount && amount !== 0) return "0";
-        
+
         // Chuyển đổi sang string và loại bỏ các ký tự không phải số
         let numStr = String(amount).replace(/[^0-9]/g, "");
-        
+
         // Nếu không có số nào, trả về "0"
         if (!numStr || numStr === "") return "0";
-        
+
         // Chuyển sang số để loại bỏ leading zeros
         const num = parseInt(numStr, 10);
         if (isNaN(num)) return "0";
-        
+
         // Format với dấu phẩy ngăn cách hàng nghìn
         return num.toLocaleString("vi-VN");
       };
@@ -6741,9 +6787,7 @@ const getWordTuitionFee = async (req, res) => {
             new TableCell({
               children: [
                 new Paragraph({
-                  text: (tuitionFee.university || "")
-                    .replace("Đại học ", "")
-                    .trim(),
+                  text: (tuitionFee.university || "").trim(),
                   alignment: AlignmentType.CENTER,
                 }),
               ],
@@ -6929,8 +6973,12 @@ const getWordTuitionFee = async (req, res) => {
     let errorMessage = "Lỗi tạo file Word";
     let statusCode = 500;
 
-    if (error.name === "SequelizeHostNotFoundError" || error.name === "SequelizeConnectionError") {
-      errorMessage = "Lỗi kết nối database. Vui lòng kiểm tra kết nối database.";
+    if (
+      error.name === "SequelizeHostNotFoundError" ||
+      error.name === "SequelizeConnectionError"
+    ) {
+      errorMessage =
+        "Lỗi kết nối database. Vui lòng kiểm tra kết nối database.";
       statusCode = 503; // Service Unavailable
     } else if (error.message) {
       errorMessage = `Lỗi tạo file Word: ${error.message}`;
@@ -7252,7 +7300,8 @@ const getExcelPoliticalManagement = async (req, res) => {
         merge: true,
       },
       personalInfo: {
-        header1: "Họ tên\nNgày sinh\nQuê quán\nNơi ở hiện nay\nNơi sinh\nCCCD\nSố thẻ Đảng viên",
+        header1:
+          "Họ tên\nNgày sinh\nQuê quán\nNơi ở hiện nay\nNơi sinh\nCCCD\nSố thẻ Đảng viên",
         header2: "",
         width: 30,
         colspan: 1,
@@ -8679,10 +8728,8 @@ const exportLearningResultsExcel = async (req, res) => {
 
     // Sort results
     allResults.sort((a, b) => {
-      const valueA =
-        sortBy === "cpa" ? parseFloat(a.cpa4) : parseFloat(a.gpa4);
-      const valueB =
-        sortBy === "cpa" ? parseFloat(b.cpa4) : parseFloat(b.gpa4);
+      const valueA = sortBy === "cpa" ? parseFloat(a.cpa4) : parseFloat(a.gpa4);
+      const valueB = sortBy === "cpa" ? parseFloat(b.cpa4) : parseFloat(b.gpa4);
       return sortOrder === "asc" ? valueA - valueB : valueB - valueA;
     });
 
