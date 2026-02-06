@@ -263,7 +263,7 @@ const NOTIFICATION_TEMPLATES = {
   tuitionFeeProposalCreated: (studentName, studentId, semester, schoolYear, amount) =>
     createNotificationData(
       "Đề xuất học phí mới",
-      `Học viên ${studentName} (${studentId}) đã thêm học phí ${semester} năm học ${schoolYear}: ${amount?.toLocaleString("vi-VN") || 0} VNĐ. Vui lòng xem xét.`,
+      `Học viên ${studentName} (${studentId}) đã thêm học phí ${semester} năm học ${schoolYear}: ${Number(amount)?.toLocaleString("vi-VN") || 0} VNĐ. Vui lòng xem xét.`,
       NOTIFICATION_TYPES.TUITION_FEE_PROPOSAL,
       "/admin/tuition-fees"
     ),
