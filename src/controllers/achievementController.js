@@ -80,45 +80,21 @@ const {
  *           description: Level
  */
 
+const YEARLY_INCLUDE = [
+  { model: ScientificInitiative, required: false },
+  { model: ScientificTopic, required: false },
+];
+
 // Helper: build response theo API cũ từ dữ liệu SQL
 const buildAchievementResponse = async (studentId) => {
   // Lấy các bản ghi theo năm + initiatives/topics
   const yearly = await YearlyAchievement.findAll({
     where: { studentId },
     order: [["year", "ASC"]],
-    include: [
-      { model: ScientificInitiative, required: false },
-      { model: ScientificTopic, required: false },
-    ],
+    include: YEARLY_INCLUDE,
   });
 
-  // Map về structure cũ - PHẢI BẮT ĐẦU VỚI id để frontend có thể update/delete
-  const yearlyAchievements = yearly.map((ya) => ({
-    id: ya.id, // ← THÊM id để frontend có thể update/delete
-    year: ya.year,
-    decisionNumber: ya.decisionNumber,
-    decisionDate: ya.decisionDate,
-    title: ya.title,
-    hasMinistryReward: ya.hasMinistryReward,
-    hasNationalReward: ya.hasNationalReward,
-    notes: ya.notes,
-    scientific: {
-      initiatives: (ya.scientific_initiatives || []).map((i) => ({
-        id: i.id,
-        title: i.title,
-        description: i.description || "",
-        year: i.year || new Date().getFullYear(),
-        status: i.status,
-      })),
-      topics: (ya.scientific_topics || []).map((t) => ({
-        id: t.id,
-        title: t.title,
-        description: t.description || "",
-        year: t.year || new Date().getFullYear(),
-        status: t.status,
-      })),
-    },
-  }));
+  const yearlyAchievements = yearly.map(mapYearlyAchievement);
 
   // Tính toán thống kê
   const stats = await calculateAchievementStatsSQL(
@@ -131,6 +107,68 @@ const buildAchievementResponse = async (studentId) => {
     yearlyAchievements,
     ...stats,
   };
+};
+
+// Map về structure cũ - PHẢI BẮT ĐẦU VỚI id để frontend có thể update/delete
+const mapYearlyAchievement = (ya) => ({
+  id: ya.id, // ← THÊM id để frontend có thể update/delete
+  year: ya.year,
+  decisionNumber: ya.decisionNumber,
+  decisionDate: ya.decisionDate,
+  title: ya.title,
+  hasMinistryReward: ya.hasMinistryReward,
+  hasNationalReward: ya.hasNationalReward,
+  notes: ya.notes,
+  scientific: {
+    initiatives: (ya.scientific_initiatives || []).map((i) => ({
+      id: i.id,
+      title: i.title,
+      description: i.description || "",
+      year: i.year || new Date().getFullYear(),
+      status: i.status,
+    })),
+    topics: (ya.scientific_topics || []).map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || "",
+      year: t.year || new Date().getFullYear(),
+      status: t.status,
+    })),
+  },
+});
+
+// Lấy khen thưởng + đề xuất của TẤT CẢ học viên trong 1 lần gọi (trang danh sách admin)
+// Trả về object { [studentId]: { ...achievement, recommendations } }, chỉ gồm học viên có khen thưởng
+const getAchievementSummaryForAdmin = async (req, res) => {
+  try {
+    const yearly = await YearlyAchievement.findAll({
+      order: [["year", "ASC"]],
+      include: YEARLY_INCLUDE,
+    });
+
+    const byStudent = {};
+    yearly.forEach((ya) => {
+      (byStudent[ya.studentId] ||= []).push(mapYearlyAchievement(ya));
+    });
+
+    const result = {};
+    Object.entries(byStudent).forEach(([studentId, yearlyAchievements]) => {
+      const achievement = {
+        studentId,
+        yearlyAchievements,
+        ...computeAchievementStats(yearlyAchievements),
+      };
+      result[studentId] = {
+        ...achievement,
+        recommendations: buildRecommendationsFromResponse(achievement),
+      };
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Error getting achievement summary:", error);
+    return res.status(500).json({ message: "Lỗi server" });
+  }
 };
 
 // Lấy thông tin khen thưởng của student
@@ -692,8 +730,27 @@ const getAchievementByStudentIdAdmin = async (req, res) => {
   }
 };
 
-// Hàm tính toán thống kê và đề xuất (SQL, ghi về profile + trả về object)
+// Hàm tính toán thống kê, ghi về profile + trả về object
 const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
+  const stats = computeAchievementStats(yearlyAchievements);
+
+  // Lưu profile tổng hợp
+  await AchievementProfile.upsert({
+    studentId,
+    totalYears: stats.totalYears,
+    totalAdvancedSoldier: stats.totalAdvancedSoldier,
+    totalCompetitiveSoldier: stats.totalCompetitiveSoldier,
+    totalScientificTopics: stats.totalScientificTopics,
+    totalScientificInitiatives: stats.totalScientificInitiatives,
+    eligibleForMinistryReward: stats.eligibleForMinistryReward,
+    eligibleForNationalReward: stats.eligibleForNationalReward,
+  });
+
+  return stats;
+};
+
+// Hàm tính toán thống kê và đề xuất (thuần, không truy vấn DB)
+const computeAchievementStats = (yearlyAchievements) => {
   const totalYears = yearlyAchievements.length;
   const totalAdvancedSoldier = yearlyAchievements.filter(
     (a) => a.title === "Chiến sĩ tiên tiến"
@@ -892,18 +949,6 @@ const calculateAchievementStatsSQL = async (studentId, yearlyAchievements) => {
     ? 2
     : Math.max(0, 2 - maxConsecutiveCompetitive);
 
-  // Lưu profile tổng hợp
-  await AchievementProfile.upsert({
-    studentId,
-    totalYears,
-    totalAdvancedSoldier,
-    totalCompetitiveSoldier,
-    totalScientificTopics: totalTopics,
-    totalScientificInitiatives: totalInitiatives,
-    eligibleForMinistryReward,
-    eligibleForNationalReward,
-  });
-
   return {
     totalYears,
     totalAdvancedSoldier,
@@ -1092,4 +1137,5 @@ module.exports = {
   getRecommendations,
   getRecommendationsByStudentId,
   getAchievementByStudentIdAdmin,
+  getAchievementSummaryForAdmin,
 };

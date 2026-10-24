@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -50,45 +51,45 @@ model classes {
 }
 
 model commander_duty_schedules {
-  id          String     @id @default(uuid()) @db.Uuid
-  commanderId String?    @db.Uuid
-  fullName    String     @db.VarChar(255)
-  rank        String?    @db.VarChar(255)
-  phoneNumber String?    @db.VarChar(255)
-  position    String?    @db.VarChar(255)
-  workDay     DateTime   @db.Timestamptz(6)
-  createdAt   DateTime   @db.Timestamptz(6)
-  updatedAt   DateTime   @db.Timestamptz(6)
+  id          String      @id @default(uuid()) @db.Uuid
+  commanderId String?     @db.Uuid
+  fullName    String      @db.VarChar(255)
+  rank        String?     @db.VarChar(255)
+  phoneNumber String?     @db.VarChar(255)
+  position    String?     @db.VarChar(255)
+  workDay     DateTime    @db.Timestamptz(6)
+  createdAt   DateTime    @db.Timestamptz(6)
+  updatedAt   DateTime    @db.Timestamptz(6)
   commander   commanders? @relation(fields: [commanderId], references: [id])
 }
 
 model commanders {
-  id                      String    @id @db.Uuid
-  commanderId             String?   @db.VarChar(255)
-  fullName                String?   @db.VarChar(255)
-  gender                  String?   @db.VarChar(255)
-  birthday                DateTime? @db.Timestamptz(6)
-  placeOfBirth            String?   @db.VarChar(255)
-  hometown                String?   @db.VarChar(255)
-  ethnicity               String?   @db.VarChar(255)
-  religion                String?   @db.VarChar(255)
-  currentAddress          String?   @db.VarChar(255)
-  email                   String?   @db.VarChar(255)
-  phoneNumber             String?   @db.VarChar(255)
-  cccd                    String?   @db.VarChar(255)
-  partyCardNumber         String?   @db.VarChar(255)
+  id                      String                     @id @db.Uuid
+  commanderId             String?                    @db.VarChar(255)
+  fullName                String?                    @db.VarChar(255)
+  gender                  String?                    @db.VarChar(255)
+  birthday                DateTime?                  @db.Timestamptz(6)
+  placeOfBirth            String?                    @db.VarChar(255)
+  hometown                String?                    @db.VarChar(255)
+  ethnicity               String?                    @db.VarChar(255)
+  religion                String?                    @db.VarChar(255)
+  currentAddress          String?                    @db.VarChar(255)
+  email                   String?                    @db.VarChar(255)
+  phoneNumber             String?                    @db.VarChar(255)
+  cccd                    String?                    @db.VarChar(255)
+  partyCardNumber         String?                    @db.VarChar(255)
   startWork               Int?
-  organization            String?   @db.VarChar(255)
-  unit                    String?   @db.VarChar(255)
-  rank                    String?   @db.VarChar(255)
-  positionGovernment      String?   @db.VarChar(255)
-  positionParty           String?   @db.VarChar(255)
-  fullPartyMember         DateTime? @db.Timestamptz(6)
-  probationaryPartyMember DateTime? @db.Timestamptz(6)
-  dateOfEnlistment        DateTime? @db.Timestamptz(6)
-  avatar                  String?   @default("https://i.pinimg.com/736x/d4/a1/ff/d4a1ff9d0f243e50062e2b21f2f2496d.jpg") @db.VarChar(255)
-  createdAt               DateTime? @db.Timestamptz(6)
-  updatedAt               DateTime? @db.Timestamptz(6)
+  organization            String?                    @db.VarChar(255)
+  unit                    String?                    @db.VarChar(255)
+  rank                    String?                    @db.VarChar(255)
+  positionGovernment      String?                    @db.VarChar(255)
+  positionParty           String?                    @db.VarChar(255)
+  fullPartyMember         DateTime?                  @db.Timestamptz(6)
+  probationaryPartyMember DateTime?                  @db.Timestamptz(6)
+  dateOfEnlistment        DateTime?                  @db.Timestamptz(6)
+  avatar                  String?                    @default("https://i.pinimg.com/736x/d4/a1/ff/d4a1ff9d0f243e50062e2b21f2f2496d.jpg") @db.VarChar(255)
+  createdAt               DateTime?                  @db.Timestamptz(6)
+  updatedAt               DateTime?                  @db.Timestamptz(6)
   users                   users[]
   duty_schedules          commander_duty_schedules[]
 }
@@ -222,7 +223,7 @@ model grade_proposals {
   debtCredits       Int?                       @default(0)
   failedSubjects    Int?                       @default(0)
   status            String?                    @default("PENDING") @db.VarChar(50) // PENDING, APPROVED, REJECTED
-  adminNote         String?                    // Ghi chú của admin khi duyệt/từ chối
+  adminNote         String? // Ghi chú của admin khi duyệt/từ chối
   approvedBy        String?                    @db.Uuid // ID của admin đã duyệt
   approvedAt        DateTime?                  @db.Timestamptz(6) // Thời gian duyệt
   attachmentFile    String?                    @db.VarChar(255) // Tên file đính kèm
@@ -366,7 +367,7 @@ model users {
   password     String      @db.VarChar(255)
   isAdmin      Boolean?    @default(false)
   role         String?     @default("USER") @db.VarChar(50) // SUPER_ADMIN, ADMIN, USER
-  refreshToken String?     // Token để refresh accessToken
+  refreshToken String? // Token để refresh accessToken
   studentId    String?     @db.Uuid
   commanderId  String?     @db.Uuid
   createdAt    DateTime?   @db.Timestamptz(6)
@@ -394,29 +395,29 @@ model yearly_achievements {
 }
 
 model yearly_results {
-  id                          String             @id @db.Uuid
-  studentId                   String             @db.Uuid
-  schoolYear                  String             @db.VarChar(255)
-  averageGrade4               Float?             @default(0)
-  averageGrade10              Float?             @default(0)
-  cumulativeGrade4            Float?             @default(0)
-  cumulativeGrade10           Float?             @default(0)
-  cumulativeCredits           Int?               @default(0)
-  totalCredits                Int?               @default(0)
-  totalSubjects               Int?               @default(0)
-  passedSubjects              Int?               @default(0)
-  failedSubjects              Int?               @default(0)
-  debtCredits                 Int?               @default(0)
-  academicStatus              String?            @db.VarChar(255)
-  studentLevel                Int?               @default(1)
-  semesterIds                 String[]           @default([]) @db.Uuid
-  partyRating                 String?            @db.VarChar(255)
-  trainingRating              String?            @db.VarChar(255)
-  partyRatingDecisionNumber   String?            @db.VarChar(255)
-  createdAt                   DateTime?          @db.Timestamptz(6)
-  updatedAt                   DateTime?          @db.Timestamptz(6)
-  semester_results            semester_results[]
-  students                    students           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                        String             @id @db.Uuid
+  studentId                 String             @db.Uuid
+  schoolYear                String             @db.VarChar(255)
+  averageGrade4             Float?             @default(0)
+  averageGrade10            Float?             @default(0)
+  cumulativeGrade4          Float?             @default(0)
+  cumulativeGrade10         Float?             @default(0)
+  cumulativeCredits         Int?               @default(0)
+  totalCredits              Int?               @default(0)
+  totalSubjects             Int?               @default(0)
+  passedSubjects            Int?               @default(0)
+  failedSubjects            Int?               @default(0)
+  debtCredits               Int?               @default(0)
+  academicStatus            String?            @db.VarChar(255)
+  studentLevel              Int?               @default(1)
+  semesterIds               String[]           @default([]) @db.Uuid
+  partyRating               String?            @db.VarChar(255)
+  trainingRating            String?            @db.VarChar(255)
+  partyRatingDecisionNumber String?            @db.VarChar(255)
+  createdAt                 DateTime?          @db.Timestamptz(6)
+  updatedAt                 DateTime?          @db.Timestamptz(6)
+  semester_results          semester_results[]
+  students                  students           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, schoolYear], map: "yearly_results_student_id_school_year")
 }
@@ -425,4 +426,3 @@ generator erd {
   provider = "prisma-erd-generator"
   output   = "ERD.svg"
 }
-

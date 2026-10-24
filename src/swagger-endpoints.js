@@ -414,6 +414,27 @@
 
 /**
  * @swagger
+ * /achievement/admin/summary:
+ *   get:
+ *     summary: Lấy khen thưởng + đề xuất của tất cả học viên (admin, 1 lần gọi)
+ *     tags: [Achievements]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "Object dạng { [studentId]: { yearlyAchievements, ...thống kê, recommendations } }, chỉ gồm học viên có khen thưởng"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               additionalProperties:
+ *                 type: object
+ *       500:
+ *         description: Lỗi server
+ */
+
+/**
+ * @swagger
  * /achievement/{userId}:
  *   get:
  *     summary: Lấy thành tích của sinh viên

@@ -9,19 +9,25 @@ const { syncModels } = require("./services/sequelizeSync");
 const { swaggerUi, specs } = require("./swagger");
 const app = express();
 
+// Danh sách domain Frontend được phép gọi API
+// Thêm domain của server qua biến môi trường CORS_ORIGINS (phân tách bằng dấu phẩy)
+const allowedOrigins = [
+  "https://qlhv.vercel.app",
+  "https://fe-student-manager.vercel.app",
+  "https://fe-qlhv-ahnzq9nap-tran-ducs-projects-6b0bdbb3.vercel.app", // Domain mới của Vercel
+  "http://localhost:3000",
+  "http://localhost:3002",
+  ...(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+];
+
 // Cấu hình CORS chi tiết để cho phép Frontend truy cập
 const corsOptions = {
   origin: function (origin, callback) {
     // Cho phép requests không có origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
-
-    const allowedOrigins = [
-      "https://qlhv.vercel.app",
-      "https://fe-student-manager.vercel.app",
-      "https://fe-qlhv-ahnzq9nap-tran-ducs-projects-6b0bdbb3.vercel.app", // Domain mới của Vercel
-      "http://localhost:3000",
-      "http://localhost:3002",
-    ];
 
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
@@ -53,13 +59,6 @@ app.options("*", cors(corsOptions));
 // Add additional CORS headers middleware as backup
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    "https://qlhv.vercel.app",
-    "https://fe-student-manager.vercel.app",
-    "https://fe-qlhv-ahnzq9nap-tran-ducs-projects-6b0bdbb3.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:3002",
-  ];
 
   if (allowedOrigins.includes(origin) || !origin) {
     res.header("Access-Control-Allow-Origin", origin || "*");

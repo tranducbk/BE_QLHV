@@ -12,11 +12,15 @@ const {
   deleteYearlyAchievementByAdmin,
   getRecommendations,
   getRecommendationsByStudentId,
+  getAchievementSummaryForAdmin,
 } = require("../controllers/achievementController");
 
 // Routes cho admin
 // Lấy danh sách tất cả achievement
 router.get("/admin/all", verifyToken, isAdmin, getAllAchievements);
+
+// Lấy khen thưởng + đề xuất của tất cả học viên (1 lần gọi cho trang danh sách)
+router.get("/admin/summary", verifyToken, isAdmin, getAchievementSummaryForAdmin);
 
 // Lấy danh sách học viên cho admin
 router.get("/admin/students", verifyToken, isAdmin, getStudentsForAdmin);
